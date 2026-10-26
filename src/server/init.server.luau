@@ -1,0 +1,21 @@
+-- Reel Legends server. Starts every service in order.
+
+local MapBuilder = require(script.MapBuilder)
+local DataService = require(script.DataService)
+local ShopService = require(script.ShopService)
+local EconomyService = require(script.EconomyService)
+local CosmeticService = require(script.CosmeticService)
+local FishingService = require(script.FishingService)
+local WorldService = require(script.WorldService)
+
+MapBuilder.Build()
+
+-- Services that react to players loading must start before DataService
+ShopService.Start()
+EconomyService.Start()
+CosmeticService.Start()
+FishingService.Start()
+WorldService.Start()
+DataService.Start()
+
+print("[Reel Legends] Server ready")

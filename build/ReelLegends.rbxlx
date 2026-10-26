@@ -1,0 +1,3394 @@
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Item class="ReplicatedStorage" referent="RBX0000000A"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX00000009"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX00000001"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- General game settings. Change numbers here to rebalance the game.
+
+local Config = {}
+
+Config.GameName = "Reel Legends"
+
+-- Saving
+Config.DataStoreName = "PlayerData_v1"
+Config.LeaderboardStoreName = "TotalCaught_v1"
+Config.AutosaveSeconds = 120
+
+-- Fish bag
+Config.BagSize = 20
+Config.BigBagSize = 60 -- with the Big Bag pass
+
+-- Fishing
+Config.MaxCastDistance = 80 -- studs from the player to the bobber
+Config.BiteWaitMin = 3.5 -- seconds, before rod speed bonus
+Config.BiteWaitMax = 8
+Config.ReelWindow = 15 -- seconds the player has to finish reeling after a bite
+Config.CastCooldown = 1
+Config.ShinyChance = 1 / 100
+Config.ShinyValueMultiplier = 3
+
+-- Rebirth: cost = RebirthBaseCost * RebirthCostGrowth ^ rebirths
+Config.RebirthBaseCost = 1000000
+Config.RebirthCostGrowth = 3
+Config.RebirthSellBonus = 0.25 -- +25% coins from selling per rebirth
+Config.RebirthRequiresZone = "frostbite"
+
+-- Daily login reward: DailyRewardBase * streak day (streak capped at 7)
+Config.DailyRewardBase = 100
+Config.DailyStreakCap = 7
+
+-- Set to true to try every game pass for free while testing in Roblox Studio.
+-- Has no effect in the live game.
+Config.TestPassesInStudio = false
+
+-- How long each weather lasts, in seconds
+Config.WeatherSeconds = 15 * 60
+
+function Config.RebirthCost(rebirths)
+	return math.floor(Config.RebirthBaseCost * Config.RebirthCostGrowth ^ rebirths)
+end
+
+function Config.SellMultiplier(rebirths)
+	return 1 + Config.RebirthSellBonus * rebirths
+end
+
+return Config
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000002"><Properties><string name="Name">Events</string><ProtectedString name="Source"><![CDATA[-- Weekly legendary fish and rotating weather. Both are worked out from the
+-- clock, so every server (and every player's screen) agrees without talking.
+
+local Workspace = game:GetService("Workspace")
+
+local Config = require(script.Parent.Config)
+local Fish = require(script.Parent.Fish)
+
+local Events = {}
+
+local WEEK = 7 * 24 * 60 * 60
+local MONDAY_OFFSET = 4 * 24 * 60 * 60 -- 1 Jan 1970 was a Thursday; weeks start Monday 00:00 UTC
+
+-- Weather is free for everyone and only gives small, temporary boosts.
+Events.Weathers = {
+	{ id = "Clear", name = "Clear Skies", description = "A calm day on the water." },
+	{ id = "Rain", name = "Rain", description = "Fish bite 20% faster.", biteMultiplier = 0.8 },
+	{ id = "Fog", name = "Fog", description = "Rare and better fish are 20% more likely.", luckMultiplier = 1.2 },
+	{ id = "Storm", name = "Storm", description = "Legendary and Mythic fish are twice as likely.", legendaryMultiplier = 2 },
+	{ id = "GoldenHour", name = "Golden Hour", description = "Shiny fish are twice as likely.", shinyMultiplier = 2 },
+}
+
+function Events.Now()
+	return Workspace:GetServerTimeNow()
+end
+
+function Events.GetWeek(now)
+	now = now or Events.Now()
+	local week = math.floor((now - MONDAY_OFFSET) / WEEK)
+	local secondsLeft = WEEK - ((now - MONDAY_OFFSET) % WEEK)
+	return week, secondsLeft
+end
+
+-- The legendary fish featured this week.
+function Events.GetEventFish(now)
+	local week, secondsLeft = Events.GetWeek(now)
+	local fish = Fish.EventFish[(week % #Fish.EventFish) + 1]
+	return fish, secondsLeft
+end
+
+function Events.GetWeather(now)
+	now = now or Events.Now()
+	local slot = math.floor(now / Config.WeatherSeconds)
+	local secondsLeft = Config.WeatherSeconds - (now % Config.WeatherSeconds)
+	-- Clear weather half the time, a random special weather otherwise
+	local roll = Random.new(slot):NextInteger(1, (#Events.Weathers - 1) * 2)
+	local weather = Events.Weathers[1]
+	if roll < #Events.Weathers then
+		weather = Events.Weathers[roll + 1]
+	end
+	return weather, secondsLeft
+end
+
+return Events
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000003"><Properties><string name="Name">Fish</string><ProtectedString name="Source"><![CDATA[-- Every fish in the game. To add a fish, copy a line and give it a new unique id.
+-- value = coins for an average-weight fish. weight = {min, max} in kg.
+
+local Fish = {}
+
+Fish.Rarities = {
+	{ id = "Common", weight = 60, color = Color3.fromRGB(200, 200, 200), hits = 1, speed = 0.9 },
+	{ id = "Uncommon", weight = 25, color = Color3.fromRGB(90, 200, 90), hits = 1, speed = 1.1 },
+	{ id = "Rare", weight = 10, color = Color3.fromRGB(70, 140, 255), hits = 2, speed = 1.3 },
+	{ id = "Epic", weight = 4, color = Color3.fromRGB(170, 80, 255), hits = 2, speed = 1.55 },
+	{ id = "Legendary", weight = 0.9, color = Color3.fromRGB(255, 170, 0), hits = 3, speed = 1.8 },
+	{ id = "Mythic", weight = 0.1, color = Color3.fromRGB(255, 60, 120), hits = 3, speed = 2.1 },
+}
+
+Fish.RarityById = {}
+for index, rarity in ipairs(Fish.Rarities) do
+	rarity.order = index
+	Fish.RarityById[rarity.id] = rarity
+end
+
+-- event = true: only catchable during its weekly event (see Events.luau)
+Fish.List = {
+	-- Sunny Shallows
+	{ id = "sunny_minnow", name = "Sunny Minnow", zone = "shallows", rarity = "Common", value = 5, weight = { 0.1, 0.4 } },
+	{ id = "pebble_perch", name = "Pebble Perch", zone = "shallows", rarity = "Common", value = 7, weight = { 0.3, 1.2 } },
+	{ id = "sandy_sardine", name = "Sandy Sardine", zone = "shallows", rarity = "Common", value = 6, weight = { 0.1, 0.3 } },
+	{ id = "bluegill_buddy", name = "Bluegill Buddy", zone = "shallows", rarity = "Common", value = 8, weight = { 0.2, 0.8 } },
+	{ id = "coral_snapper", name = "Coral Snapper", zone = "shallows", rarity = "Uncommon", value = 20, weight = { 1, 4 } },
+	{ id = "striped_bass", name = "Striped Bass", zone = "shallows", rarity = "Uncommon", value = 24, weight = { 2, 6 } },
+	{ id = "puffer_pal", name = "Puffer Pal", zone = "shallows", rarity = "Uncommon", value = 28, weight = { 0.5, 2 } },
+	{ id = "rainbow_trout", name = "Rainbow Trout", zone = "shallows", rarity = "Rare", value = 60, weight = { 1, 5 } },
+	{ id = "lemon_ray", name = "Lemon Ray", zone = "shallows", rarity = "Rare", value = 75, weight = { 3, 12 } },
+	{ id = "glimmer_koi", name = "Glimmer Koi", zone = "shallows", rarity = "Epic", value = 200, weight = { 2, 8 } },
+	{ id = "seahorse_knight", name = "Seahorse Knight", zone = "shallows", rarity = "Epic", value = 240, weight = { 0.2, 1 } },
+	{ id = "sunfin_emperor", name = "Sunfin Emperor", zone = "shallows", rarity = "Legendary", value = 1200, weight = { 20, 60 } },
+	{ id = "golden_guppy_king", name = "Golden Guppy King", zone = "shallows", rarity = "Mythic", value = 6000, weight = { 1, 3 } },
+
+	-- Misty Mangroves
+	{ id = "mud_skipper", name = "Mud Skipper", zone = "mangroves", rarity = "Common", value = 25, weight = { 0.2, 0.6 } },
+	{ id = "swamp_catfish", name = "Swamp Catfish", zone = "mangroves", rarity = "Common", value = 30, weight = { 2, 8 } },
+	{ id = "reed_eel", name = "Reed Eel", zone = "mangroves", rarity = "Common", value = 35, weight = { 1, 3 } },
+	{ id = "bog_tilapia", name = "Bog Tilapia", zone = "mangroves", rarity = "Common", value = 28, weight = { 0.5, 2 } },
+	{ id = "moss_pike", name = "Moss Pike", zone = "mangroves", rarity = "Uncommon", value = 90, weight = { 3, 10 } },
+	{ id = "lantern_gar", name = "Lantern Gar", zone = "mangroves", rarity = "Uncommon", value = 110, weight = { 4, 12 } },
+	{ id = "root_crab", name = "Root Crab", zone = "mangroves", rarity = "Uncommon", value = 100, weight = { 0.5, 2 } },
+	{ id = "mist_piranha", name = "Mist Piranha", zone = "mangroves", rarity = "Rare", value = 280, weight = { 0.5, 3 } },
+	{ id = "jade_arowana", name = "Jade Arowana", zone = "mangroves", rarity = "Rare", value = 330, weight = { 2, 7 } },
+	{ id = "ghost_barracuda", name = "Ghost Barracuda", zone = "mangroves", rarity = "Epic", value = 900, weight = { 8, 25 } },
+	{ id = "bayou_gator_gar", name = "Bayou Gator Gar", zone = "mangroves", rarity = "Epic", value = 1100, weight = { 30, 90 } },
+	{ id = "willow_wyrm", name = "Willow Wyrm", zone = "mangroves", rarity = "Legendary", value = 5000, weight = { 50, 150 } },
+	{ id = "ancient_turtle", name = "Ancient Mangrove Turtle", zone = "mangroves", rarity = "Mythic", value = 25000, weight = { 100, 300 } },
+
+	-- Frostbite Bay
+	{ id = "ice_cod", name = "Ice Cod", zone = "frostbite", rarity = "Common", value = 110, weight = { 1, 5 } },
+	{ id = "frost_herring", name = "Frost Herring", zone = "frostbite", rarity = "Common", value = 120, weight = { 0.2, 0.8 } },
+	{ id = "snowball_smelt", name = "Snowball Smelt", zone = "frostbite", rarity = "Common", value = 100, weight = { 0.1, 0.4 } },
+	{ id = "polar_pollock", name = "Polar Pollock", zone = "frostbite", rarity = "Common", value = 130, weight = { 1, 4 } },
+	{ id = "glacier_salmon", name = "Glacier Salmon", zone = "frostbite", rarity = "Uncommon", value = 380, weight = { 3, 10 } },
+	{ id = "arctic_char", name = "Arctic Char", zone = "frostbite", rarity = "Uncommon", value = 420, weight = { 2, 8 } },
+	{ id = "crystal_crab", name = "Crystal Crab", zone = "frostbite", rarity = "Uncommon", value = 450, weight = { 1, 4 } },
+	{ id = "aurora_halibut", name = "Aurora Halibut", zone = "frostbite", rarity = "Rare", value = 1200, weight = { 10, 40 } },
+	{ id = "narwhal_pup", name = "Narwhal Pup", zone = "frostbite", rarity = "Rare", value = 1400, weight = { 40, 120 } },
+	{ id = "blizzard_marlin", name = "Blizzard Marlin", zone = "frostbite", rarity = "Epic", value = 4000, weight = { 60, 200 } },
+	{ id = "frozen_angler", name = "Frozen Angler", zone = "frostbite", rarity = "Epic", value = 4500, weight = { 5, 20 } },
+	{ id = "yeti_whale", name = "Yeti Whale", zone = "frostbite", rarity = "Legendary", value = 20000, weight = { 500, 1500 } },
+	{ id = "frostbite_kraken", name = "Frostbite Kraken", zone = "frostbite", rarity = "Mythic", value = 100000, weight = { 800, 2500 } },
+
+	-- Weekly event legendaries (one per week, rotating)
+	{ id = "moonscale_leviathan", name = "Moonscale Leviathan", zone = "shallows", rarity = "Legendary", value = 3000, weight = { 80, 200 }, event = true },
+	{ id = "thunderjaw_shark", name = "Thunderjaw Shark", zone = "mangroves", rarity = "Legendary", value = 12000, weight = { 150, 400 }, event = true },
+	{ id = "prism_manta", name = "Prism Manta", zone = "frostbite", rarity = "Legendary", value = 45000, weight = { 200, 600 }, event = true },
+	{ id = "starfall_sturgeon", name = "Starfall Sturgeon", zone = "mangroves", rarity = "Legendary", value = 15000, weight = { 100, 300 }, event = true },
+}
+
+Fish.ById = {}
+Fish.ByZone = {} -- regular (non-event) fish per zone
+Fish.EventFish = {}
+for _, fish in ipairs(Fish.List) do
+	assert(Fish.ById[fish.id] == nil, "Duplicate fish id: " .. fish.id)
+	Fish.ById[fish.id] = fish
+	if fish.event then
+		table.insert(Fish.EventFish, fish)
+	else
+		Fish.ByZone[fish.zone] = Fish.ByZone[fish.zone] or {}
+		table.insert(Fish.ByZone[fish.zone], fish)
+	end
+end
+
+return Fish
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000004"><Properties><string name="Name">Format</string><ProtectedString name="Source"><![CDATA[-- Small helpers for showing numbers and times.
+
+local Format = {}
+
+local SUFFIXES = { "", "K", "M", "B", "T", "Qa", "Qi" }
+
+-- 1234 -> "1.23K", 5600000 -> "5.6M"
+function Format.Number(n)
+	n = math.floor(n or 0)
+	if math.abs(n) < 1000 then
+		return tostring(n)
+	end
+	local index = 1
+	local value = n
+	while math.abs(value) >= 1000 and index < #SUFFIXES do
+		value = value / 1000
+		index += 1
+	end
+	local text = string.format("%.2f", value)
+	text = text:gsub("0+$", ""):gsub("%.$", "")
+	return text .. SUFFIXES[index]
+end
+
+-- 3725 -> "1h 2m", 95 -> "1m 35s"
+function Format.Duration(seconds)
+	seconds = math.max(0, math.floor(seconds))
+	local days = math.floor(seconds / 86400)
+	local hours = math.floor((seconds % 86400) / 3600)
+	local minutes = math.floor((seconds % 3600) / 60)
+	local secs = seconds % 60
+	if days > 0 then
+		return string.format("%dd %dh", days, hours)
+	elseif hours > 0 then
+		return string.format("%dh %dm", hours, minutes)
+	elseif minutes > 0 then
+		return string.format("%dm %ds", minutes, secs)
+	end
+	return string.format("%ds", secs)
+end
+
+function Format.Weight(kg)
+	if kg >= 100 then
+		return string.format("%d kg", math.floor(kg))
+	end
+	return string.format("%.1f kg", kg)
+end
+
+return Format
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000005"><Properties><string name="Name">Remotes</string><ProtectedString name="Source"><![CDATA[-- All the messages between server and players. The server creates them;
+-- players wait for them to appear.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local EVENTS = {
+	"DataUpdate", -- server -> player: the player's full save data
+	"Notify", -- server -> player: a toast message
+	"OpenPanel", -- server -> player: open a menu (e.g. the rod shop)
+	"CancelCast", -- player -> server: stop fishing
+	"Bite", -- server -> player: a fish bit, start the reel minigame
+	"Reel", -- player -> server: reel minigame result
+	"CatchResult", -- server -> player: what was caught (or that it escaped)
+}
+
+local FUNCTIONS = {
+	"Action", -- player -> server: buy rod, unlock zone, rebirth, teleport, equip...
+	"Cast", -- player -> server: cast at a position, returns true if the bobber landed
+}
+
+local Remotes = {}
+
+local folder
+if RunService:IsServer() then
+	folder = ReplicatedStorage:FindFirstChild("Remotes")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "Remotes"
+		folder.Parent = ReplicatedStorage
+	end
+	for _, name in ipairs(EVENTS) do
+		if not folder:FindFirstChild(name) then
+			local remote = Instance.new("RemoteEvent")
+			remote.Name = name
+			remote.Parent = folder
+		end
+	end
+	for _, name in ipairs(FUNCTIONS) do
+		if not folder:FindFirstChild(name) then
+			local remote = Instance.new("RemoteFunction")
+			remote.Name = name
+			remote.Parent = folder
+		end
+	end
+else
+	folder = ReplicatedStorage:WaitForChild("Remotes")
+end
+
+for _, name in ipairs(EVENTS) do
+	Remotes[name] = folder:WaitForChild(name)
+end
+for _, name in ipairs(FUNCTIONS) do
+	Remotes[name] = folder:WaitForChild(name)
+end
+
+return Remotes
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000006"><Properties><string name="Name">Rods</string><ProtectedString name="Source"><![CDATA[-- Rods are bought with in-game coins only (never Robux).
+-- luck: multiplies the chance of Rare and better fish
+-- speed: multiplies the wait for a bite (lower is faster)
+-- control: makes the green reel zone wider
+
+local Rods = {}
+
+Rods.List = {
+	{ id = "twig", name = "Twig Rod", price = 0, luck = 1.0, speed = 1.0, control = 0.0, color = Color3.fromRGB(140, 100, 60) },
+	{ id = "bamboo", name = "Bamboo Rod", price = 400, luck = 1.1, speed = 0.95, control = 0.02, color = Color3.fromRGB(190, 180, 90) },
+	{ id = "fiberglass", name = "Fiberglass Rod", price = 2000, luck = 1.2, speed = 0.9, control = 0.04, color = Color3.fromRGB(230, 230, 230) },
+	{ id = "carbon", name = "Carbon Rod", price = 8000, luck = 1.35, speed = 0.85, control = 0.06, color = Color3.fromRGB(40, 40, 45) },
+	{ id = "mangrove", name = "Mangrove Rod", price = 30000, luck = 1.5, speed = 0.8, control = 0.08, color = Color3.fromRGB(70, 120, 60) },
+	{ id = "glacier", name = "Glacier Rod", price = 120000, luck = 1.75, speed = 0.72, control = 0.1, color = Color3.fromRGB(150, 220, 255) },
+	{ id = "aurora", name = "Aurora Rod", price = 450000, luck = 2.0, speed = 0.65, control = 0.12, color = Color3.fromRGB(120, 255, 200) },
+	{ id = "leviathan", name = "Leviathan Rod", price = 1500000, luck = 2.5, speed = 0.55, control = 0.15, color = Color3.fromRGB(60, 40, 140), requiresRebirths = 1 },
+}
+
+Rods.ById = {}
+for index, rod in ipairs(Rods.List) do
+	rod.order = index
+	Rods.ById[rod.id] = rod
+end
+
+Rods.Default = "twig"
+
+return Rods
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000007"><Properties><string name="Name">Shop</string><ProtectedString name="Source"><![CDATA[-- Everything sold for Robux. Nothing here changes which fish you catch or how
+-- many coins you earn: only looks and time-savers.
+--
+-- HOW TO FILL IN THE IDS (see docs/SETUP_GUIDE.md, step 6):
+--   Game passes: Creator Dashboard > your game > Monetization > Passes
+--   Cosmetics:   Creator Dashboard > your game > Monetization > Developer Products
+-- An id of 0 means "not set up yet": the item shows as "Coming soon" in the shop.
+
+local Shop = {}
+
+Shop.Passes = {
+	{ id = "VIP", gamePassId = 0, name = "VIP", suggestedPrice = 250, description = "Golden VIP name tag, a crown, and access to the VIP dock." },
+	{ id = "AutoSell", gamePassId = 0, name = "Auto Sell", suggestedPrice = 150, description = "Your bag sells itself when it fills up, wherever you are." },
+	{ id = "BigBag", gamePassId = 0, name = "Big Bag", suggestedPrice = 100, description = "Carry 60 fish instead of 20." },
+	{ id = "Teleporter", gamePassId = 0, name = "Zone Teleporter", suggestedPrice = 200, description = "Teleport to any zone you have unlocked." },
+}
+
+-- kind: "rodSkin" changes how your rod looks, "trail" adds a trail behind you,
+-- "title" shows a title above your head.
+Shop.Cosmetics = {
+	{ id = "skin_golden", kind = "rodSkin", name = "Golden Rod Skin", productId = 0, suggestedPrice = 99, color = Color3.fromRGB(255, 200, 40), material = Enum.Material.Foil },
+	{ id = "skin_neon", kind = "rodSkin", name = "Neon Pink Rod Skin", productId = 0, suggestedPrice = 75, color = Color3.fromRGB(255, 60, 200), material = Enum.Material.Neon },
+	{ id = "skin_galaxy", kind = "rodSkin", name = "Galaxy Rod Skin", productId = 0, suggestedPrice = 149, color = Color3.fromRGB(110, 60, 255), material = Enum.Material.ForceField },
+	{ id = "skin_candy", kind = "rodSkin", name = "Candy Rod Skin", productId = 0, suggestedPrice = 49, color = Color3.fromRGB(255, 120, 150), material = Enum.Material.SmoothPlastic },
+
+	{ id = "trail_ocean", kind = "trail", name = "Ocean Trail", productId = 0, suggestedPrice = 49, colors = { Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 255, 200) } },
+	{ id = "trail_fire", kind = "trail", name = "Fire Trail", productId = 0, suggestedPrice = 75, colors = { Color3.fromRGB(255, 220, 0), Color3.fromRGB(255, 40, 0) } },
+	{ id = "trail_rainbow", kind = "trail", name = "Rainbow Trail", productId = 0, suggestedPrice = 129, colors = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(255, 255, 0), Color3.fromRGB(0, 255, 0), Color3.fromRGB(0, 120, 255), Color3.fromRGB(200, 0, 255) } },
+
+	{ id = "title_bigcatch", kind = "title", name = "Title: Big Catch", text = "Big Catch", productId = 0, suggestedPrice = 25, color = Color3.fromRGB(120, 200, 255) },
+	{ id = "title_whisperer", kind = "title", name = "Title: Fish Whisperer", text = "Fish Whisperer", productId = 0, suggestedPrice = 49, color = Color3.fromRGB(160, 255, 160) },
+	{ id = "title_sealegend", kind = "title", name = "Title: Sea Legend", text = "Sea Legend", productId = 0, suggestedPrice = 99, color = Color3.fromRGB(255, 190, 60) },
+}
+
+-- Free titles earned by playing. The server checks the "rule".
+Shop.EarnedTitles = {
+	{ id = "earned_shallows", kind = "title", name = "Shallows Master", text = "Shallows Master", rule = "zoneBook", zone = "shallows", color = Color3.fromRGB(255, 220, 120) },
+	{ id = "earned_mangroves", kind = "title", name = "Mangrove Master", text = "Mangrove Master", rule = "zoneBook", zone = "mangroves", color = Color3.fromRGB(110, 200, 110) },
+	{ id = "earned_frostbite", kind = "title", name = "Frostbite Master", text = "Frostbite Master", rule = "zoneBook", zone = "frostbite", color = Color3.fromRGB(170, 220, 255) },
+	{ id = "earned_legend", kind = "title", name = "Legend Hunter", text = "Legend Hunter", rule = "eventFish", color = Color3.fromRGB(255, 150, 0) },
+	{ id = "earned_reborn", kind = "title", name = "Reborn", text = "Reborn", rule = "rebirth", color = Color3.fromRGB(255, 90, 160) },
+}
+
+Shop.PassById = {}
+for _, pass in ipairs(Shop.Passes) do
+	Shop.PassById[pass.id] = pass
+end
+
+Shop.CosmeticById = {}
+Shop.CosmeticByProductId = {}
+for _, item in ipairs(Shop.Cosmetics) do
+	Shop.CosmeticById[item.id] = item
+	if item.productId ~= 0 then
+		Shop.CosmeticByProductId[item.productId] = item
+	end
+end
+for _, item in ipairs(Shop.EarnedTitles) do
+	item.earned = true
+	Shop.CosmeticById[item.id] = item
+end
+
+return Shop
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000008"><Properties><string name="Name">Zones</string><ProtectedString name="Source"><![CDATA[-- Fishing zones. Zones are unlocked with in-game coins.
+
+local Zones = {}
+
+Zones.List = {
+	{ id = "shallows", name = "Sunny Shallows", price = 0, color = Color3.fromRGB(255, 220, 120) },
+	{ id = "mangroves", name = "Misty Mangroves", price = 5000, color = Color3.fromRGB(90, 160, 90) },
+	{ id = "frostbite", name = "Frostbite Bay", price = 150000, color = Color3.fromRGB(170, 220, 255) },
+}
+
+Zones.ById = {}
+for index, zone in ipairs(Zones.List) do
+	zone.order = index
+	Zones.ById[zone.id] = zone
+end
+
+Zones.Default = "shallows"
+
+return Zones
+]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX00000013"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000012"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[-- Reel Legends server. Starts every service in order.
+
+local MapBuilder = require(script.MapBuilder)
+local DataService = require(script.DataService)
+local ShopService = require(script.ShopService)
+local EconomyService = require(script.EconomyService)
+local CosmeticService = require(script.CosmeticService)
+local FishingService = require(script.FishingService)
+local WorldService = require(script.WorldService)
+
+MapBuilder.Build()
+
+-- Services that react to players loading must start before DataService
+ShopService.Start()
+EconomyService.Start()
+CosmeticService.Start()
+FishingService.Start()
+WorldService.Start()
+DataService.Start()
+
+print("[Reel Legends] Server ready")
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX0000000B"><Properties><string name="Name">CosmeticService</string><ProtectedString name="Source"><![CDATA[-- Shows cosmetics on characters: titles, trails, rod skins and VIP extras.
+-- Also hands out free titles players earn by playing.
+
+local Players = game:GetService("Players")
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Fish = require(Shared.Fish)
+local Shop = require(Shared.Shop)
+local Remotes = require(Shared.Remotes)
+
+local DataService = require(script.Parent.DataService)
+local ShopService = require(script.Parent.ShopService)
+
+local CosmeticService = {}
+
+local VIP_GOLD = Color3.fromRGB(255, 200, 40)
+local applied = {} -- [player] = signature of what is shown, to skip needless rebuilds
+
+local function equippedItem(data, kind)
+	local id = data.cosmetics.equipped[kind]
+	return id and data.cosmetics.owned[id] and Shop.CosmeticById[id] or nil
+end
+
+function CosmeticService.StyleRod(player, handle)
+	local data = DataService.Get(player)
+	local skin = data and equippedItem(data, "rodSkin")
+	if skin then
+		handle.Color = skin.color
+		handle.Material = skin.material
+	end
+end
+
+function CosmeticService.DecorateBobber(player, bobber)
+	if ShopService.HasPass(player, "VIP") then
+		bobber.Color = VIP_GOLD
+		bobber.Material = Enum.Material.Neon
+	end
+end
+
+local function clearOld(character)
+	for _, name in ipairs({ "ReelTitle", "ReelTrail", "ReelCrown", "ReelTrailTop", "ReelTrailBottom" }) do
+		for _, item in ipairs(character:GetDescendants()) do
+			if item.Name == name then
+				item:Destroy()
+			end
+		end
+	end
+end
+
+local function applyToCharacter(player)
+	local data = DataService.Get(player)
+	local character = player.Character
+	if not data or not character then
+		return
+	end
+	local head = character:WaitForChild("Head", 5)
+	local root = character:WaitForChild("HumanoidRootPart", 5)
+	if not head or not root then
+		return
+	end
+	clearOld(character)
+
+	local vip = ShopService.HasPass(player, "VIP")
+	local title = equippedItem(data, "title")
+
+	if title or vip then
+		local gui = Instance.new("BillboardGui")
+		gui.Name = "ReelTitle"
+		gui.Size = UDim2.fromOffset(220, 50)
+		gui.StudsOffset = Vector3.new(0, 2.6, 0)
+		gui.MaxDistance = 90
+		gui.Adornee = head
+		local layout = Instance.new("UIListLayout")
+		layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+		layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		layout.Parent = gui
+		local function line(text, color)
+			local label = Instance.new("TextLabel")
+			label.Size = UDim2.new(1, 0, 0.5, 0)
+			label.BackgroundTransparency = 1
+			label.Text = text
+			label.TextColor3 = color
+			label.TextScaled = true
+			label.Font = Enum.Font.FredokaOne
+			label.TextStrokeTransparency = 0.4
+			label.Parent = gui
+		end
+		if vip then
+			line("VIP", VIP_GOLD)
+		end
+		if title then
+			line(title.text, title.color)
+		end
+		gui.Parent = head
+	end
+
+	if vip then
+		local crown = Instance.new("Part")
+		crown.Name = "ReelCrown"
+		crown.Size = Vector3.new(1.1, 0.5, 1.1)
+		crown.Color = VIP_GOLD
+		crown.Material = Enum.Material.Neon
+		crown.CanCollide = false
+		crown.CanQuery = false
+		crown.Massless = true
+		local weld = Instance.new("Weld")
+		weld.Part0 = head
+		weld.Part1 = crown
+		weld.C0 = CFrame.new(0, head.Size.Y / 2 + 0.3, 0)
+		weld.Parent = crown
+		crown.Parent = character
+	end
+
+	local trailItem = equippedItem(data, "trail")
+	if trailItem then
+		local top = Instance.new("Attachment")
+		top.Name = "ReelTrailTop"
+		top.Position = Vector3.new(0, 0.8, 0.5)
+		top.Parent = root
+		local bottom = Instance.new("Attachment")
+		bottom.Name = "ReelTrailBottom"
+		bottom.Position = Vector3.new(0, -0.8, 0.5)
+		bottom.Parent = root
+		local keypoints = {}
+		for index, color in ipairs(trailItem.colors) do
+			table.insert(keypoints, ColorSequenceKeypoint.new((index - 1) / math.max(1, #trailItem.colors - 1), color))
+		end
+		local trail = Instance.new("Trail")
+		trail.Name = "ReelTrail"
+		trail.Attachment0 = top
+		trail.Attachment1 = bottom
+		trail.Color = ColorSequence.new(keypoints)
+		trail.Lifetime = 0.6
+		trail.LightEmission = 0.6
+		trail.Transparency = NumberSequence.new(0.2, 1)
+		trail.Parent = root
+	end
+end
+
+local function signature(data, runtime)
+	local equipped = data.cosmetics.equipped
+	return table.concat({
+		tostring(equipped.title),
+		tostring(equipped.trail),
+		tostring(runtime.passes and runtime.passes.VIP),
+	}, "|")
+end
+
+local function earnedTitleUnlocked(rule, data)
+	if rule.rule == "zoneBook" then
+		for _, fish in ipairs(Fish.ByZone[rule.zone] or {}) do
+			if not data.book[fish.id] then
+				return false
+			end
+		end
+		return true
+	elseif rule.rule == "eventFish" then
+		for _, fish in ipairs(Fish.EventFish) do
+			if data.book[fish.id] then
+				return true
+			end
+		end
+	elseif rule.rule == "rebirth" then
+		return data.rebirths >= 1
+	end
+	return false
+end
+
+local function checkEarnedTitles(player, data)
+	local newTitles = {}
+	for _, title in ipairs(Shop.EarnedTitles) do
+		if not data.cosmetics.owned[title.id] and earnedTitleUnlocked(title, data) then
+			table.insert(newTitles, title)
+		end
+	end
+	if #newTitles == 0 then
+		return
+	end
+	DataService.Update(player, function(saved)
+		for _, title in ipairs(newTitles) do
+			saved.cosmetics.owned[title.id] = true
+		end
+	end)
+	for _, title in ipairs(newTitles) do
+		Remotes.Notify:FireClient(player, "New title unlocked: " .. title.text .. "! Equip it in the Shop.", "rare")
+	end
+end
+
+function CosmeticService.Start()
+	DataService.OnChanged(function(player, data, runtime)
+		checkEarnedTitles(player, data)
+		local current = signature(data, runtime)
+		if applied[player] ~= current then
+			applied[player] = current
+			applyToCharacter(player)
+		end
+	end)
+
+	local function watch(player)
+		player.CharacterAdded:Connect(function()
+			task.wait(0.5)
+			applyToCharacter(player)
+		end)
+	end
+	Players.PlayerAdded:Connect(watch)
+	for _, player in ipairs(Players:GetPlayers()) do
+		watch(player)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		applied[player] = nil
+	end)
+end
+
+return CosmeticService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000C"><Properties><string name="Name">DataService</string><ProtectedString name="Source"><![CDATA[-- Loads, saves and hands out each player's save data.
+-- Other scripts change data with DataService.Update(player, function(data) ... end)
+-- so the player's screen and leaderboard always refresh afterwards.
+
+local DataStoreService = game:GetService("DataStoreService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Config = require(Shared.Config)
+local Rods = require(Shared.Rods)
+local Zones = require(Shared.Zones)
+local Remotes = require(Shared.Remotes)
+
+local DataService = {}
+
+local LOCK_EXPIRES = 15 * 60 -- a lock older than this is from a crashed server
+
+local function defaultData()
+	return {
+		coins = 0,
+		totalEarned = 0,
+		totalCaught = 0,
+		rebirths = 0,
+		bag = {}, -- { {id, weight, value, shiny} }
+		rodsOwned = { [Rods.Default] = true },
+		equippedRod = Rods.Default,
+		zones = { [Zones.Default] = true },
+		book = {}, -- [fishId] = { count, best, shiny }
+		cosmetics = {
+			owned = {}, -- [cosmeticId] = true
+			equipped = {}, -- [kind] = cosmeticId
+		},
+		purchases = {}, -- [receiptPurchaseId] = true
+		lastDailyDay = 0,
+		dailyStreak = 0,
+	}
+end
+
+-- Fill in any fields missing from older saves
+local function reconcile(data, template)
+	for key, value in pairs(template) do
+		if data[key] == nil then
+			if type(value) == "table" then
+				data[key] = table.clone(value)
+			else
+				data[key] = value
+			end
+		elseif type(value) == "table" and type(data[key]) == "table" then
+			reconcile(data[key], value)
+		end
+	end
+	return data
+end
+
+local store = nil
+local savingEnabled = true
+local profiles = {} -- [player] = { data = {}, runtime = {} }
+local listeners = {} -- functions called after any data change
+
+do
+	local ok, result = pcall(function()
+		return DataStoreService:GetDataStore(Config.DataStoreName)
+	end)
+	if ok then
+		store = result
+	else
+		savingEnabled = false
+		warn("[DataService] DataStores unavailable, progress will not save: " .. tostring(result))
+	end
+end
+
+local function keyFor(player)
+	return "player_" .. player.UserId
+end
+
+local function loadData(player)
+	if not store then
+		return defaultData(), false
+	end
+
+	local key = keyFor(player)
+	for attempt = 1, 6 do
+		local lockedElsewhere = false
+		local stealLock = attempt >= 4 -- after ~15 seconds, assume the old server is gone
+		local ok, result = pcall(function()
+			return store:UpdateAsync(key, function(saved)
+				saved = saved or { data = defaultData() }
+				local lock = saved.lock
+				if lock and lock.jobId ~= game.JobId and os.time() - lock.time < LOCK_EXPIRES and not stealLock then
+					lockedElsewhere = true
+					return nil
+				end
+				saved.lock = { jobId = game.JobId, time = os.time() }
+				return saved
+			end)
+		end)
+
+		if ok and not lockedElsewhere and result then
+			return reconcile(result.data or defaultData(), defaultData()), true
+		end
+
+		if not ok then
+			local message = tostring(result)
+			warn(string.format("[DataService] Load attempt %d failed for %s: %s", attempt, player.Name, message))
+			if RunService:IsStudio() then
+				-- Usually an unpublished place, or "Enable Studio Access to API Services" is off
+				return defaultData(), false
+			end
+		end
+		task.wait(5)
+	end
+	return nil, false
+end
+
+local function saveData(player, release)
+	local profile = profiles[player]
+	if not profile or not profile.canSave then
+		return true
+	end
+	local data = profile.data
+	local ok, err = pcall(function()
+		store:UpdateAsync(keyFor(player), function(saved)
+			saved = saved or {}
+			if saved.lock and saved.lock.jobId ~= game.JobId then
+				-- Another server took over this player; don't overwrite newer data
+				return nil
+			end
+			saved.data = data
+			saved.lock = (not release) and { jobId = game.JobId, time = os.time() } or nil
+			return saved
+		end)
+	end)
+	if not ok then
+		warn("[DataService] Save failed for " .. player.Name .. ": " .. tostring(err))
+	end
+
+	-- Global "most fish caught" board
+	pcall(function()
+		DataStoreService:GetOrderedDataStore(Config.LeaderboardStoreName):SetAsync(tostring(player.UserId), data.totalCaught)
+	end)
+	return ok
+end
+
+local function setupLeaderstats(player)
+	local folder = Instance.new("Folder")
+	folder.Name = "leaderstats"
+	for _, name in ipairs({ "Coins", "Caught", "Rebirths" }) do
+		local value = Instance.new("IntValue")
+		value.Name = name
+		value.Parent = folder
+	end
+	folder.Parent = player
+end
+
+local function refresh(player)
+	local profile = profiles[player]
+	if not profile then
+		return
+	end
+	local data = profile.data
+	local stats = player:FindFirstChild("leaderstats")
+	if stats then
+		stats.Coins.Value = data.coins
+		stats.Caught.Value = data.totalCaught
+		stats.Rebirths.Value = data.rebirths
+	end
+	for _, listener in ipairs(listeners) do
+		task.spawn(listener, player, data, profile.runtime)
+	end
+	Remotes.DataUpdate:FireClient(player, data, profile.runtime)
+end
+
+function DataService.Get(player)
+	local profile = profiles[player]
+	return profile and profile.data
+end
+
+-- Runtime info that is not saved (game passes owned, bag size, ...)
+function DataService.GetRuntime(player)
+	local profile = profiles[player]
+	return profile and profile.runtime
+end
+
+function DataService.Update(player, change)
+	local profile = profiles[player]
+	if not profile then
+		return nil
+	end
+	local result = change(profile.data, profile.runtime)
+	refresh(player)
+	return result
+end
+
+function DataService.Refresh(player)
+	refresh(player)
+end
+
+-- Called with (player, data, runtime) after every change
+function DataService.OnChanged(listener)
+	table.insert(listeners, listener)
+end
+
+function DataService.SaveNow(player)
+	return saveData(player, false)
+end
+
+function DataService.IsLoaded(player)
+	return profiles[player] ~= nil
+end
+
+-- Waits until the player's data has loaded (or they left)
+function DataService.WaitFor(player)
+	while player.Parent and not profiles[player] do
+		task.wait(0.2)
+	end
+	return profiles[player] ~= nil
+end
+
+local loadedCallbacks = {}
+-- callback(player, data, runtime) runs once per player, before the data is shared.
+-- It may yield, but must not call DataService.Get/Update for that player.
+function DataService.OnLoaded(callback)
+	table.insert(loadedCallbacks, callback)
+end
+
+local function onPlayerAdded(player)
+	setupLeaderstats(player)
+	local data, canSave = loadData(player)
+	if not player.Parent then
+		return
+	end
+	if not data then
+		player:Kick("We couldn't load your save. Please rejoin in a minute.")
+		return
+	end
+	-- Loaded callbacks fill in runtime info (like game passes) before anything else sees the data
+	local runtime = { passes = {}, bagSize = Config.BagSize }
+	for _, callback in ipairs(loadedCallbacks) do
+		callback(player, data, runtime)
+	end
+	if not player.Parent then
+		return
+	end
+	profiles[player] = { data = data, runtime = runtime, canSave = canSave and savingEnabled }
+	refresh(player)
+	if not profiles[player].canSave then
+		Remotes.Notify:FireClient(player, "Saving is off (in Studio, turn on API Services to test saving).", "warning")
+	end
+end
+
+local function onPlayerRemoving(player)
+	if profiles[player] then
+		saveData(player, true)
+		profiles[player] = nil
+	end
+end
+
+function DataService.Start()
+	Players.PlayerAdded:Connect(onPlayerAdded)
+	Players.PlayerRemoving:Connect(onPlayerRemoving)
+	for _, player in ipairs(Players:GetPlayers()) do
+		task.spawn(onPlayerAdded, player)
+	end
+
+	task.spawn(function()
+		while true do
+			task.wait(Config.AutosaveSeconds)
+			for player in pairs(profiles) do
+				task.spawn(saveData, player, false)
+			end
+		end
+	end)
+
+	game:BindToClose(function()
+		local pending = 0
+		for player in pairs(profiles) do
+			pending += 1
+			task.spawn(function()
+				saveData(player, true)
+				pending -= 1
+			end)
+		end
+		local started = os.clock()
+		while pending > 0 and os.clock() - started < 25 do
+			task.wait(0.1)
+		end
+	end)
+end
+
+return DataService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000D"><Properties><string name="Name">EconomyService</string><ProtectedString name="Source"><![CDATA[-- Coins: selling fish, buying rods, unlocking zones, rebirths, daily rewards,
+-- plus the menu buttons players press (all go through the "Action" remote).
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Config = require(Shared.Config)
+local Rods = require(Shared.Rods)
+local Zones = require(Shared.Zones)
+local Shop = require(Shared.Shop)
+local Format = require(Shared.Format)
+local Remotes = require(Shared.Remotes)
+
+local DataService = require(script.Parent.DataService)
+local ShopService = require(script.Parent.ShopService)
+
+local EconomyService = {}
+
+local function notify(player, text, kind)
+	Remotes.Notify:FireClient(player, text, kind)
+end
+
+function EconomyService.SellAll(player)
+	local data = DataService.Get(player)
+	if not data then
+		return false, "Still loading"
+	end
+	if #data.bag == 0 then
+		return false, "Your bag is empty. Go catch some fish!"
+	end
+	local count = #data.bag
+	local earned = DataService.Update(player, function(saved)
+		local total = 0
+		for _, fish in ipairs(saved.bag) do
+			total += fish.value
+		end
+		total = math.floor(total * Config.SellMultiplier(saved.rebirths))
+		saved.coins += total
+		saved.totalEarned += total
+		saved.bag = {}
+		return total
+	end)
+	notify(player, string.format("Sold %d fish for %s coins", count, Format.Number(earned)), "coins")
+	return true
+end
+
+function EconomyService.BuyRod(player, rodId)
+	local rod = Rods.ById[rodId]
+	local data = DataService.Get(player)
+	if not rod or not data then
+		return false, "Unknown rod"
+	end
+	if data.rodsOwned[rod.id] then
+		return EconomyService.EquipRod(player, rodId)
+	end
+	if rod.requiresRebirths and data.rebirths < rod.requiresRebirths then
+		return false, string.format("Needs %d rebirth(s)", rod.requiresRebirths)
+	end
+	if data.coins < rod.price then
+		return false, "Not enough coins"
+	end
+	DataService.Update(player, function(saved)
+		saved.coins -= rod.price
+		saved.rodsOwned[rod.id] = true
+		saved.equippedRod = rod.id
+	end)
+	notify(player, "You bought the " .. rod.name .. "!", "success")
+	return true
+end
+
+function EconomyService.EquipRod(player, rodId)
+	local data = DataService.Get(player)
+	if not data or not data.rodsOwned[rodId] then
+		return false, "You don't own that rod"
+	end
+	DataService.Update(player, function(saved)
+		saved.equippedRod = rodId
+	end)
+	return true
+end
+
+function EconomyService.UnlockZone(player, zoneId)
+	local zone = Zones.ById[zoneId]
+	local data = DataService.Get(player)
+	if not zone or not data then
+		return false, "Unknown zone"
+	end
+	if data.zones[zone.id] then
+		return true
+	end
+	if data.coins < zone.price then
+		return false, string.format("You need %s coins to unlock %s", Format.Number(zone.price), zone.name)
+	end
+	DataService.Update(player, function(saved)
+		saved.coins -= zone.price
+		saved.zones[zone.id] = true
+	end)
+	notify(player, zone.name .. " unlocked!", "success")
+	return true
+end
+
+function EconomyService.Teleport(player, zoneId)
+	local data = DataService.Get(player)
+	local character = player.Character
+	if not data or not character then
+		return false, "Not ready"
+	end
+	if zoneId ~= "hub" then
+		if not ShopService.HasPass(player, "Teleporter") then
+			return false, "The Zone Teleporter pass lets you teleport to zones"
+		end
+		if not data.zones[zoneId] then
+			return false, "Unlock that zone first"
+		end
+	end
+	for _, item in ipairs(workspace:GetDescendants()) do
+		if item:IsA("BasePart") and item:GetAttribute("ZoneSpawn") == zoneId then
+			character:PivotTo(item.CFrame + Vector3.new(0, 4, 0))
+			return true
+		end
+	end
+	return false, "No teleport spot for that zone"
+end
+
+function EconomyService.Rebirth(player)
+	local data = DataService.Get(player)
+	if not data then
+		return false, "Not ready"
+	end
+	local cost = Config.RebirthCost(data.rebirths)
+	local requiredZone = Zones.ById[Config.RebirthRequiresZone]
+	if requiredZone and not data.zones[requiredZone.id] then
+		return false, "Unlock " .. requiredZone.name .. " first"
+	end
+	if data.coins < cost then
+		return false, string.format("You need %s coins to rebirth", Format.Number(cost))
+	end
+	DataService.Update(player, function(saved)
+		-- Keep: fish book, cosmetics, titles, total stats. Reset: coins, rods, zones, bag.
+		saved.rebirths += 1
+		saved.coins = 0
+		saved.bag = {}
+		saved.rodsOwned = { [Rods.Default] = true }
+		saved.equippedRod = Rods.Default
+		saved.zones = { [Zones.Default] = true }
+	end)
+	EconomyService.Teleport(player, "hub")
+	notify(player, string.format("Reborn! You now earn +%d%% coins from fish.", math.floor((Config.SellMultiplier(data.rebirths) - 1) * 100 + 0.5)), "success")
+	return true
+end
+
+function EconomyService.EquipCosmetic(player, cosmeticId)
+	local item = Shop.CosmeticById[cosmeticId]
+	local data = DataService.Get(player)
+	if not item or not data or not data.cosmetics.owned[cosmeticId] then
+		return false, "You don't own that"
+	end
+	DataService.Update(player, function(saved)
+		if saved.cosmetics.equipped[item.kind] == cosmeticId then
+			saved.cosmetics.equipped[item.kind] = nil -- pressing again takes it off
+		else
+			saved.cosmetics.equipped[item.kind] = cosmeticId
+		end
+	end)
+	return true
+end
+
+local function giveDailyReward(player, data)
+	local today = math.floor(os.time() / 86400)
+	if data.lastDailyDay == today then
+		return
+	end
+	if data.lastDailyDay == today - 1 then
+		data.dailyStreak += 1
+	else
+		data.dailyStreak = 1
+	end
+	data.lastDailyDay = today
+	local day = math.min(data.dailyStreak, Config.DailyStreakCap)
+	local reward = math.floor(Config.DailyRewardBase * day * Config.SellMultiplier(data.rebirths))
+	data.coins += reward
+	data.totalEarned += reward
+	task.spawn(function()
+		if DataService.WaitFor(player) then
+			notify(player, string.format("Daily reward (day %d streak): +%s coins! Come back tomorrow for more.", data.dailyStreak, Format.Number(reward)), "coins")
+		end
+	end)
+end
+
+local actions = {
+	BuyRod = EconomyService.BuyRod,
+	EquipRod = EconomyService.EquipRod,
+	UnlockZone = EconomyService.UnlockZone,
+	Teleport = EconomyService.Teleport,
+	Rebirth = EconomyService.Rebirth,
+	EquipCosmetic = EconomyService.EquipCosmetic,
+}
+
+function EconomyService.Start()
+	DataService.OnLoaded(function(player, data)
+		giveDailyReward(player, data)
+	end)
+
+	Remotes.Action.OnServerInvoke = function(player, actionName, argument)
+		local action = actions[actionName]
+		if type(actionName) ~= "string" or not action then
+			return false, "Unknown action"
+		end
+		if argument ~= nil and type(argument) ~= "string" then
+			return false, "Bad request"
+		end
+		local ok, success, message = pcall(action, player, argument)
+		if not ok then
+			warn("[EconomyService] " .. actionName .. " failed: " .. tostring(success))
+			return false, "Something went wrong"
+		end
+		return success, message
+	end
+end
+
+return EconomyService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000E"><Properties><string name="Name">FishingService</string><ProtectedString name="Source"><![CDATA[-- Casting, bites and catches. The server decides which fish bites, so players
+-- can't pick their own fish. The reel minigame runs on the player's screen.
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Config = require(Shared.Config)
+local Fish = require(Shared.Fish)
+local Rods = require(Shared.Rods)
+local Zones = require(Shared.Zones)
+local Events = require(Shared.Events)
+local Remotes = require(Shared.Remotes)
+
+local DataService = require(script.Parent.DataService)
+local ShopService = require(script.Parent.ShopService)
+local EconomyService = require(script.Parent.EconomyService)
+local CosmeticService = require(script.Parent.CosmeticService)
+
+local FishingService = {}
+
+local ROD_NAME = "Fishing Rod"
+local SECONDS_PER_HIT = 0.3 -- fastest a human can finish each reel hit
+
+local random = Random.new()
+local casts = {} -- [player] = current cast
+local lastCast = {} -- [player] = os.clock()
+local nextCastId = 0
+
+local function fishingZoneParts()
+	local result = {}
+	for _, item in ipairs(Workspace:GetDescendants()) do
+		if item:IsA("BasePart") and item:GetAttribute("FishingZone") then
+			table.insert(result, item)
+		end
+	end
+	return result
+end
+
+local zoneParts = {}
+
+local function zoneAt(position)
+	for _, zonePart in ipairs(zoneParts) do
+		local relative = zonePart.CFrame:PointToObjectSpace(position)
+		local half = zonePart.Size / 2
+		if math.abs(relative.X) <= half.X and math.abs(relative.Z) <= half.Z and math.abs(relative.Y) <= half.Y + 3 then
+			return zonePart:GetAttribute("FishingZone")
+		end
+	end
+	return nil
+end
+
+-- True if there is land (an island, a bridge...) at this spot instead of water
+local function isOverLand(position, character)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local ignore = table.clone(zoneParts)
+	table.insert(ignore, character)
+	params.FilterDescendantsInstances = ignore
+	params.IgnoreWater = true
+	local hit = Workspace:Raycast(position + Vector3.new(0, 60, 0), Vector3.new(0, -120, 0), params)
+	return hit ~= nil and hit.Instance ~= Workspace.Terrain and hit.Position.Y > position.Y + 0.5
+end
+
+local function rodTip(player)
+	local character = player.Character
+	local tool = character and character:FindFirstChild(ROD_NAME)
+	local handle = tool and tool:FindFirstChild("Handle")
+	return handle and handle:FindFirstChild("Tip")
+end
+
+local function clearCast(player)
+	local cast = casts[player]
+	casts[player] = nil
+	if cast and cast.bobber then
+		cast.bobber:Destroy()
+	end
+end
+
+local function makeBobber(player, position)
+	local bobber = Instance.new("Part")
+	bobber.Name = player.Name .. "Bobber"
+	bobber.Shape = Enum.PartType.Ball
+	bobber.Size = Vector3.new(0.8, 0.8, 0.8)
+	bobber.Color = Color3.fromRGB(255, 60, 60)
+	bobber.Material = Enum.Material.SmoothPlastic
+	bobber.Anchored = true
+	bobber.CanCollide = false
+	bobber.CanQuery = false
+	bobber.Position = position
+	local attachment = Instance.new("Attachment")
+	attachment.Parent = bobber
+
+	-- The fishing line is a Beam: it only draws a line, so it can't pull the player
+	local tip = rodTip(player)
+	if tip then
+		local line = Instance.new("Beam")
+		line.Attachment0 = tip
+		line.Attachment1 = attachment
+		line.Width0 = 0.06
+		line.Width1 = 0.06
+		line.FaceCamera = true
+		line.CurveSize0 = -2
+		line.Segments = 12
+		line.Color = ColorSequence.new(Color3.new(1, 1, 1))
+		line.Transparency = NumberSequence.new(0.2)
+		line.Parent = bobber
+	end
+	CosmeticService.DecorateBobber(player, bobber)
+	bobber.Parent = Workspace
+	return bobber
+end
+
+-- Pick which fish bites, using rod luck, weather and the weekly event
+local function rollFish(data, zoneId)
+	local rod = Rods.ById[data.equippedRod] or Rods.ById[Rods.Default]
+	local weather = Events.GetWeather()
+	local eventFish = Events.GetEventFish()
+
+	local byRarity = {}
+	for _, fish in ipairs(Fish.ByZone[zoneId] or {}) do
+		byRarity[fish.rarity] = byRarity[fish.rarity] or {}
+		table.insert(byRarity[fish.rarity], fish)
+	end
+
+	local choices = {}
+	local total = 0
+	for _, rarity in ipairs(Fish.Rarities) do
+		if byRarity[rarity.id] then
+			local weight = rarity.weight
+			if rarity.order >= 3 then
+				weight *= rod.luck * (weather.luckMultiplier or 1)
+			end
+			if rarity.order >= 5 then
+				weight *= weather.legendaryMultiplier or 1
+			end
+			total += weight
+			table.insert(choices, { rarity = rarity, weight = weight })
+		end
+	end
+
+	local pick = random:NextNumber(0, total)
+	local chosen = choices[1].rarity
+	for _, choice in ipairs(choices) do
+		pick -= choice.weight
+		if pick <= 0 then
+			chosen = choice.rarity
+			break
+		end
+	end
+
+	local fish
+	if chosen.id == "Legendary" and eventFish.zone == zoneId and random:NextNumber() < 0.5 then
+		fish = eventFish
+	else
+		local pool = byRarity[chosen.id]
+		fish = pool[random:NextInteger(1, #pool)]
+	end
+
+	-- Heavier fish are rarer and worth more
+	local roll = random:NextNumber() ^ 1.6
+	local weight = fish.weight[1] + (fish.weight[2] - fish.weight[1]) * roll
+	local shiny = random:NextNumber() < Config.ShinyChance * (weather.shinyMultiplier or 1)
+	local value = fish.value * (0.75 + 0.5 * roll)
+	if shiny then
+		value *= Config.ShinyValueMultiplier
+	end
+
+	return {
+		id = fish.id,
+		weight = math.floor(weight * 10 + 0.5) / 10,
+		value = math.max(1, math.floor(value)),
+		shiny = shiny,
+	}
+end
+
+local function announce(player, fish, caught)
+	local rarity = Fish.RarityById[fish.rarity]
+	if rarity.order < 5 then
+		return
+	end
+	local text = string.format("%s caught a %s%s %s!", player.DisplayName, caught.shiny and "Shiny " or "", fish.rarity, fish.name)
+	for _, other in ipairs(Players:GetPlayers()) do
+		Remotes.Notify:FireClient(other, text, "rare")
+	end
+end
+
+local function onCast(player, target)
+	if typeof(target) ~= "Vector3" then
+		return
+	end
+	local data = DataService.Get(player)
+	local runtime = DataService.GetRuntime(player)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not data or not root or not humanoid or humanoid.Health <= 0 or not character:FindFirstChild(ROD_NAME) then
+		return
+	end
+	if lastCast[player] and os.clock() - lastCast[player] < Config.CastCooldown then
+		return
+	end
+
+	if #data.bag >= runtime.bagSize then
+		if ShopService.HasPass(player, "AutoSell") then
+			EconomyService.SellAll(player)
+		else
+			Remotes.Notify:FireClient(player, "Your bag is full! Sell your fish at the Fish Market.", "warning")
+			return
+		end
+	end
+
+	local flat = Vector3.new(target.X - root.Position.X, 0, target.Z - root.Position.Z)
+	if flat.Magnitude > Config.MaxCastDistance then
+		Remotes.Notify:FireClient(player, "That's too far. Get closer to the water.", "warning")
+		return
+	end
+
+	local zoneId = zoneAt(target)
+	if not zoneId or isOverLand(target, character) then
+		Remotes.Notify:FireClient(player, "Cast into the water to fish.", "warning")
+		return
+	end
+	if not data.zones[zoneId] then
+		local zone = Zones.ById[zoneId]
+		Remotes.Notify:FireClient(player, "Unlock " .. (zone and zone.name or zoneId) .. " to fish here.", "warning")
+		return
+	end
+
+	clearCast(player)
+	lastCast[player] = os.clock()
+	nextCastId += 1
+	local castId = nextCastId
+	local surface = Vector3.new(target.X, 0.3, target.Z)
+	local cast = { id = castId, zone = zoneId, phase = "waiting", bobber = makeBobber(player, surface) }
+	casts[player] = cast
+
+	local rod = Rods.ById[data.equippedRod] or Rods.ById[Rods.Default]
+	local weather = Events.GetWeather()
+	local wait = random:NextNumber(Config.BiteWaitMin, Config.BiteWaitMax) * rod.speed * (weather.biteMultiplier or 1)
+
+	task.delay(wait, function()
+		if casts[player] ~= cast or not player.Parent then
+			return
+		end
+		local latest = DataService.Get(player)
+		if not latest then
+			return
+		end
+		cast.catch = rollFish(latest, zoneId)
+		cast.phase = "bite"
+		cast.biteAt = os.clock()
+		if cast.bobber then
+			cast.bobber.Position -= Vector3.new(0, 0.4, 0)
+			cast.bobber.Color = Color3.fromRGB(255, 220, 0)
+		end
+		local rarity = Fish.RarityById[Fish.ById[cast.catch.id].rarity]
+		Remotes.Bite:FireClient(player, castId, {
+			rarity = rarity.id,
+			hits = rarity.hits,
+			speed = rarity.speed,
+			control = rod.control,
+		})
+
+		task.delay(Config.ReelWindow, function()
+			if casts[player] == cast then
+				clearCast(player)
+				Remotes.CatchResult:FireClient(player, castId, nil)
+			end
+		end)
+	end)
+	return true
+end
+
+local function onReel(player, castId, success)
+	local cast = casts[player]
+	if not cast or cast.id ~= castId or cast.phase ~= "bite" then
+		return
+	end
+	clearCast(player)
+
+	local fish = Fish.ById[cast.catch.id]
+	local rarity = Fish.RarityById[fish.rarity]
+	local tooFast = os.clock() - cast.biteAt < rarity.hits * SECONDS_PER_HIT
+	if success ~= true or tooFast then
+		Remotes.CatchResult:FireClient(player, castId, nil)
+		return
+	end
+
+	local caught = cast.catch
+	local isNew = DataService.Update(player, function(data)
+		table.insert(data.bag, caught)
+		data.totalCaught += 1
+		local entry = data.book[caught.id]
+		local firstTime = entry == nil
+		if firstTime then
+			entry = { count = 0, best = 0, shiny = 0 }
+			data.book[caught.id] = entry
+		end
+		entry.count += 1
+		entry.best = math.max(entry.best, caught.weight)
+		if caught.shiny then
+			entry.shiny += 1
+		end
+		return firstTime
+	end)
+
+	Remotes.CatchResult:FireClient(player, castId, {
+		id = caught.id,
+		weight = caught.weight,
+		value = caught.value,
+		shiny = caught.shiny,
+		isNew = isNew,
+	})
+	announce(player, fish, caught)
+
+	local data = DataService.Get(player)
+	local runtime = DataService.GetRuntime(player)
+	if data and runtime and #data.bag >= runtime.bagSize and ShopService.HasPass(player, "AutoSell") then
+		EconomyService.SellAll(player)
+	end
+end
+
+-- Builds the rod tool from the player's equipped rod and rod skin
+local function buildRod(player)
+	local data = DataService.Get(player)
+	if not data then
+		return
+	end
+	local rod = Rods.ById[data.equippedRod] or Rods.ById[Rods.Default]
+
+	local tool = Instance.new("Tool")
+	tool.Name = ROD_NAME
+	tool.ToolTip = rod.name
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+
+	local length = 7
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.25, length, 0.25)
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.Color = rod.color
+	handle.Material = Enum.Material.SmoothPlastic
+	handle.Parent = tool
+
+	local tip = Instance.new("Attachment")
+	tip.Name = "Tip"
+	tip.Position = Vector3.new(0, length / 2, 0)
+	tip.Parent = handle
+
+	-- Hold the rod near its bottom end, tilted forward.
+	-- If the rod ever points the wrong way, change ROD_TILT (e.g. to -50).
+	local ROD_TILT = 50
+	tool.Grip = CFrame.new(0, -length / 2 + 0.6, 0) * CFrame.Angles(math.rad(ROD_TILT), 0, 0)
+
+	CosmeticService.StyleRod(player, handle)
+	return tool
+end
+
+local function giveRod(player)
+	local backpack = player:WaitForChild("Backpack", 10)
+	if not backpack then
+		return
+	end
+	local character = player.Character
+	local wasEquipped = character and character:FindFirstChild(ROD_NAME) ~= nil
+	for _, container in ipairs({ backpack, character }) do
+		local old = container and container:FindFirstChild(ROD_NAME)
+		if old then
+			old:Destroy()
+		end
+	end
+	local tool = buildRod(player)
+	if not tool then
+		return
+	end
+	if wasEquipped and character then
+		tool.Parent = character
+	else
+		tool.Parent = backpack
+	end
+end
+
+function FishingService.GiveRod(player)
+	clearCast(player)
+	giveRod(player)
+end
+
+function FishingService.Start()
+	zoneParts = fishingZoneParts()
+	Workspace.DescendantAdded:Connect(function(item)
+		if item:IsA("BasePart") and item:GetAttribute("FishingZone") then
+			table.insert(zoneParts, item)
+		end
+	end)
+
+	Remotes.Cast.OnServerInvoke = function(player, target)
+		return onCast(player, target) == true
+	end
+	Remotes.Reel.OnServerEvent:Connect(onReel)
+	Remotes.CancelCast.OnServerEvent:Connect(function(player)
+		clearCast(player)
+	end)
+
+	DataService.OnLoaded(function(player)
+		player.CharacterAdded:Connect(function()
+			clearCast(player)
+			task.defer(giveRod, player)
+		end)
+		task.spawn(function()
+			if DataService.WaitFor(player) and player.Character then
+				giveRod(player)
+			end
+		end)
+	end)
+
+	-- Rebuild the rod when the player equips a new rod or rod skin
+	local rodLooks = {}
+	DataService.OnChanged(function(player, data)
+		local look = data.equippedRod .. "|" .. tostring(data.cosmetics.equipped.rodSkin)
+		if rodLooks[player] ~= nil and rodLooks[player] ~= look then
+			FishingService.GiveRod(player)
+		end
+		rodLooks[player] = look
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		clearCast(player)
+		lastCast[player] = nil
+		rodLooks[player] = nil
+	end)
+end
+
+return FishingService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- Builds a simple starter world (hub island + 3 fishing islands) when the place
+-- has no folder called "Map" in Workspace. That means the game is playable the
+-- moment you press Play. To use your own scenery later, see docs/SETUP_GUIDE.md:
+-- the game only cares about parts with these attributes:
+--   FishingZone = "shallows"   invisible flat part on the water surface
+--   ZoneGate    = "mangroves"  wall that blocks a locked zone
+--   ZoneSpawn   = "frostbite"  where the teleporter drops players
+--   Station     = "Sell" / "Rods" / "Leaderboard" / "EventBoard"
+--   VipDoor     = true         door only VIP players can walk through
+
+local Workspace = game:GetService("Workspace")
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Zones = require(Shared.Zones)
+local Format = require(Shared.Format)
+
+local MapBuilder = {}
+
+local GROUND_Y = 3
+
+local function part(props)
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	for key, value in pairs(props) do
+		if key ~= "Parent" then
+			p[key] = value
+		end
+	end
+	p.Parent = props.Parent
+	return p
+end
+
+local function sign(parentPart, text, face, color)
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = face or Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 40
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.TextScaled = true
+	label.Font = Enum.Font.FredokaOne
+	label.TextColor3 = color or Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 0.3
+	label.Parent = gui
+	gui.Parent = parentPart
+	return label
+end
+
+local function prompt(parentPart, action, object, distance)
+	local p = Instance.new("ProximityPrompt")
+	p.ActionText = action
+	p.ObjectText = object or ""
+	p.MaxActivationDistance = distance or 12
+	p.RequiresLineOfSight = false
+	p.HoldDuration = 0
+	p.Parent = parentPart
+	return p
+end
+
+local function island(folder, name, center, size, topColor, topMaterial)
+	part({
+		Name = name .. "Beach",
+		Size = Vector3.new(size.X + 16, 6, size.Z + 16),
+		Position = Vector3.new(center.X, GROUND_Y - 4, center.Z),
+		Material = Enum.Material.Sand,
+		Color = Color3.fromRGB(235, 215, 160),
+		Parent = folder,
+	})
+	part({
+		Name = name .. "Ground",
+		Size = Vector3.new(size.X, 1, size.Z),
+		Position = Vector3.new(center.X, GROUND_Y - 0.5, center.Z),
+		Material = topMaterial or Enum.Material.Grass,
+		Color = topColor,
+		Parent = folder,
+	})
+end
+
+local function tree(folder, position, leafColor, random)
+	local height = random:NextNumber(10, 16)
+	part({
+		Name = "Trunk",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(height, 2, 2),
+		CFrame = CFrame.new(position + Vector3.new(0, height / 2, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.Wood,
+		Color = Color3.fromRGB(110, 80, 50),
+		Parent = folder,
+	})
+	part({
+		Name = "Leaves",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.one * random:NextNumber(8, 12),
+		Position = position + Vector3.new(0, height + 2, 0),
+		Material = Enum.Material.Grass,
+		Color = leafColor,
+		CanCollide = false,
+		Parent = folder,
+	})
+end
+
+local function stall(folder, name, position, color, title)
+	local model = Instance.new("Model")
+	model.Name = name
+	local counter = part({
+		Name = "Counter",
+		Size = Vector3.new(14, 4, 4),
+		Position = position + Vector3.new(0, 2, 0),
+		Material = Enum.Material.WoodPlanks,
+		Color = Color3.fromRGB(160, 110, 70),
+		Parent = model,
+	})
+	for _, x in ipairs({ -6.5, 6.5 }) do
+		part({
+			Name = "Post",
+			Size = Vector3.new(1, 10, 1),
+			Position = position + Vector3.new(x, 5, -3),
+			Material = Enum.Material.Wood,
+			Color = Color3.fromRGB(110, 80, 50),
+			Parent = model,
+		})
+	end
+	part({
+		Name = "Roof",
+		Size = Vector3.new(16, 1, 8),
+		Position = position + Vector3.new(0, 10.5, -1.5),
+		Material = Enum.Material.Fabric,
+		Color = color,
+		Parent = model,
+	})
+	local board = part({
+		Name = "Sign",
+		Size = Vector3.new(12, 3, 0.5),
+		Position = position + Vector3.new(0, 12.5, 2),
+		Color = Color3.fromRGB(60, 40, 30),
+		Parent = model,
+	})
+	sign(board, title, Enum.NormalId.Front)
+	sign(board, title, Enum.NormalId.Back)
+	model.Parent = folder
+	return counter
+end
+
+local function board(folder, name, cframe, size, station)
+	local p = part({
+		Name = name,
+		Size = size,
+		CFrame = cframe,
+		Color = Color3.fromRGB(30, 40, 60),
+		Material = Enum.Material.SmoothPlastic,
+		Parent = folder,
+	})
+	p:SetAttribute("Station", station)
+	return p
+end
+
+function MapBuilder.Build()
+	if Workspace:FindFirstChild("Map") then
+		return -- the creator made their own map
+	end
+
+	local map = Instance.new("Folder")
+	map.Name = "Map"
+	local scenery = Instance.new("Folder")
+	scenery.Name = "Scenery"
+	scenery.Parent = map
+	local fishing = Instance.new("Folder")
+	fishing.Name = "FishingZones"
+	fishing.Parent = map
+
+	local random = Random.new(42)
+
+	-- Ocean
+	local terrain = Workspace.Terrain
+	terrain:FillBlock(CFrame.new(350, -22, 0), Vector3.new(1300, 8, 700), Enum.Material.Sand)
+	terrain:FillBlock(CFrame.new(350, -9, 0), Vector3.new(1300, 18, 700), Enum.Material.Water)
+	terrain.WaterColor = Color3.fromRGB(40, 150, 200)
+	terrain.WaterTransparency = 0.6
+	terrain.WaterWaveSize = 0.15
+
+	-- Hub island
+	island(scenery, "Hub", Vector3.new(0, 0, 0), Vector3.new(140, 0, 140), Color3.fromRGB(110, 190, 90))
+	local spawnLocation = Instance.new("SpawnLocation")
+	spawnLocation.Name = "HubSpawn"
+	spawnLocation.Anchored = true
+	spawnLocation.Size = Vector3.new(10, 1, 10)
+	spawnLocation.Position = Vector3.new(0, GROUND_Y + 0.5, 30)
+	spawnLocation.Material = Enum.Material.Wood
+	spawnLocation.Color = Color3.fromRGB(190, 150, 100)
+	spawnLocation.Duration = 0
+	spawnLocation.Parent = map
+
+	local hubSpawn = part({ Name = "HubTeleport", Size = Vector3.new(4, 1, 4), Position = Vector3.new(0, GROUND_Y + 0.5, 20), Transparency = 1, CanCollide = false, Parent = map })
+	hubSpawn:SetAttribute("ZoneSpawn", "hub")
+
+	local sellCounter = stall(scenery, "FishMarket", Vector3.new(-35, GROUND_Y, -25), Color3.fromRGB(60, 140, 220), "FISH MARKET")
+	sellCounter:SetAttribute("Station", "Sell")
+	prompt(sellCounter, "Sell all fish", "Fish Market")
+
+	local rodCounter = stall(scenery, "RodShop", Vector3.new(35, GROUND_Y, -25), Color3.fromRGB(220, 120, 50), "ROD SHOP")
+	rodCounter:SetAttribute("Station", "Rods")
+	prompt(rodCounter, "Browse rods", "Rod Shop")
+
+	board(map, "GlobalBoard", CFrame.new(0, GROUND_Y + 10, -60), Vector3.new(28, 18, 1), "Leaderboard")
+	board(map, "EventBoard", CFrame.new(-55, GROUND_Y + 7, 25) * CFrame.Angles(0, math.rad(90), 0), Vector3.new(20, 12, 1), "EventBoard")
+
+	-- VIP dock (cosmetic perk: a nice private spot by the hub)
+	part({ Name = "VipDock", Size = Vector3.new(20, 1, 44), Position = Vector3.new(0, GROUND_Y - 0.5, 98), Material = Enum.Material.WoodPlanks, Color = Color3.fromRGB(200, 160, 60), Parent = scenery })
+	local vipDoor = part({ Name = "VipDoor", Size = Vector3.new(20, 12, 1), Position = Vector3.new(0, GROUND_Y + 6, 76.5), Color = Color3.fromRGB(255, 200, 40), Material = Enum.Material.Neon, Transparency = 0.5, Parent = map })
+	vipDoor:SetAttribute("VipDoor", true)
+	sign(vipDoor, "VIP DOCK", Enum.NormalId.Front, Color3.fromRGB(255, 240, 180))
+	sign(vipDoor, "VIP DOCK", Enum.NormalId.Back, Color3.fromRGB(255, 240, 180))
+	local vipWater = part({ Name = "VipWater", Size = Vector3.new(80, 1, 70), Position = Vector3.new(0, 0.5, 112), Transparency = 1, CanCollide = false, CanTouch = false, Parent = fishing })
+	vipWater:SetAttribute("FishingZone", "shallows")
+
+	for _ = 1, 14 do
+		local x = random:NextNumber(-64, 64)
+		local z = random:NextNumber(-64, 64)
+		if (math.abs(x) > 52 or math.abs(z) > 52) and math.abs(z - 0) > 8 and math.abs(x) > 12 then
+			tree(scenery, Vector3.new(x, GROUND_Y, z), Color3.fromRGB(60, 160, 60), random)
+		end
+	end
+
+	-- Fishing islands, one per zone, in a row going east
+	local looks = {
+		shallows = { ground = Color3.fromRGB(240, 220, 150), material = Enum.Material.Sand, leaves = Color3.fromRGB(90, 190, 70) },
+		mangroves = { ground = Color3.fromRGB(70, 110, 60), material = Enum.Material.Grass, leaves = Color3.fromRGB(40, 90, 40) },
+		frostbite = { ground = Color3.fromRGB(240, 250, 255), material = Enum.Material.Snow, leaves = Color3.fromRGB(220, 240, 255) },
+	}
+	local previousEdge = 78
+	for index, zone in ipairs(Zones.List) do
+		local centerX = 230 * index
+		local look = looks[zone.id] or looks.shallows
+		island(scenery, zone.name, Vector3.new(centerX, 0, 0), Vector3.new(90, 0, 90), look.ground, look.material)
+
+		for _ = 1, 6 do
+			local x = centerX + random:NextNumber(-38, 38)
+			local z = random:NextNumber(-38, 38)
+			if math.abs(z) > 12 then
+				tree(scenery, Vector3.new(x, GROUND_Y, z), look.leaves, random)
+			end
+		end
+
+		local zoneSign = part({ Name = "ZoneSign", Size = Vector3.new(24, 6, 1), Position = Vector3.new(centerX, GROUND_Y + 14, -40), Color = Color3.fromRGB(30, 40, 60), Parent = scenery })
+		sign(zoneSign, zone.name, Enum.NormalId.Front, zone.color)
+		sign(zoneSign, zone.name, Enum.NormalId.Back, zone.color)
+
+		-- Bridge from the previous island
+		local islandEdge = centerX - 53
+		local bridgeLength = islandEdge - previousEdge
+		part({
+			Name = "Bridge",
+			Size = Vector3.new(bridgeLength, 1, 10),
+			Position = Vector3.new(previousEdge + bridgeLength / 2, GROUND_Y - 0.5, 0),
+			Material = Enum.Material.WoodPlanks,
+			Color = Color3.fromRGB(150, 110, 70),
+			Parent = scenery,
+		})
+		previousEdge = centerX + 53
+
+		if zone.price > 0 then
+			local gate = part({
+				Name = zone.name .. "Gate",
+				Size = Vector3.new(2, 14, 12),
+				Position = Vector3.new(islandEdge - bridgeLength + 6, GROUND_Y + 7, 0),
+				Color = zone.color,
+				Material = Enum.Material.ForceField,
+				Parent = map,
+			})
+			gate:SetAttribute("ZoneGate", zone.id)
+			local text = zone.name .. "\n" .. Format.Number(zone.price) .. " coins"
+			sign(gate, text, Enum.NormalId.Left)
+			sign(gate, text, Enum.NormalId.Right)
+			prompt(gate, "Unlock", zone.name, 14)
+		end
+
+		local zoneSpawn = part({ Name = zone.name .. "Spawn", Size = Vector3.new(4, 1, 4), Position = Vector3.new(centerX, GROUND_Y + 0.5, 0), Transparency = 1, CanCollide = false, Parent = map })
+		zoneSpawn:SetAttribute("ZoneSpawn", zone.id)
+
+		-- The water around this island counts as this zone
+		local water = part({
+			Name = zone.name .. "Water",
+			Size = Vector3.new(225, 1, 600),
+			Position = Vector3.new(centerX, 0.5, 0),
+			Transparency = 1,
+			CanCollide = false,
+			CanTouch = false,
+			Parent = fishing,
+		})
+		water:SetAttribute("FishingZone", zone.id)
+	end
+
+	-- Mist over the mangroves
+	local fog = Instance.new("Part")
+	fog.Name = "MangroveMist"
+	fog.Anchored = true
+	fog.CanCollide = false
+	fog.CanQuery = false
+	fog.Transparency = 1
+	fog.Size = Vector3.new(120, 1, 120)
+	fog.Position = Vector3.new(460, GROUND_Y + 2, 0)
+	local mist = Instance.new("ParticleEmitter")
+	mist.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	mist.Color = ColorSequence.new(Color3.fromRGB(220, 235, 220))
+	mist.Transparency = NumberSequence.new(0.85)
+	mist.Size = NumberSequence.new(14)
+	mist.Lifetime = NumberRange.new(8, 12)
+	mist.Rate = 6
+	mist.Speed = NumberRange.new(1, 2)
+	mist.Parent = fog
+	fog.Parent = scenery
+
+	map.Parent = Workspace
+end
+
+return MapBuilder
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">ShopService</string><ProtectedString name="Source"><![CDATA[-- Robux purchases: game passes (VIP, Auto Sell, Big Bag, Teleporter) and
+-- cosmetic developer products.
+
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Config = require(Shared.Config)
+local Shop = require(Shared.Shop)
+local Remotes = require(Shared.Remotes)
+
+local DataService = require(script.Parent.DataService)
+
+local ShopService = {}
+
+local function applyPassEffects(runtime)
+	runtime.bagSize = runtime.passes.BigBag and Config.BigBagSize or Config.BagSize
+end
+
+function ShopService.HasPass(player, passId)
+	local runtime = DataService.GetRuntime(player)
+	return runtime ~= nil and runtime.passes ~= nil and runtime.passes[passId] == true
+end
+
+local function checkPasses(player, runtime)
+	runtime.passes = {}
+	local testing = RunService:IsStudio() and Config.TestPassesInStudio
+	for _, pass in ipairs(Shop.Passes) do
+		if testing then
+			runtime.passes[pass.id] = true
+		elseif pass.gamePassId ~= 0 then
+			local ok, owns = pcall(function()
+				return MarketplaceService:UserOwnsGamePassAsync(player.UserId, pass.gamePassId)
+			end)
+			runtime.passes[pass.id] = ok and owns or false
+		end
+	end
+	applyPassEffects(runtime)
+end
+
+local function onPassPurchased(player, gamePassId, purchased)
+	if not purchased then
+		return
+	end
+	for _, pass in ipairs(Shop.Passes) do
+		if pass.gamePassId == gamePassId and pass.gamePassId ~= 0 then
+			DataService.Update(player, function(_, runtime)
+				runtime.passes[pass.id] = true
+				applyPassEffects(runtime)
+			end)
+			Remotes.Notify:FireClient(player, "Thanks for buying " .. pass.name .. "!", "success")
+		end
+	end
+end
+
+-- Roblox calls this for every developer product purchase. It must only return
+-- PurchaseGranted once the item is given AND saved, otherwise Roblox retries later.
+local function processReceipt(receipt)
+	local player = Players:GetPlayerByUserId(receipt.PlayerId)
+	if not player or not DataService.IsLoaded(player) then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+
+	local item = Shop.CosmeticByProductId[receipt.ProductId]
+	if not item then
+		warn("[ShopService] Unknown product id " .. tostring(receipt.ProductId) .. " - add it to Shop.luau")
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+
+	local data = DataService.Get(player)
+	if data.purchases[receipt.PurchaseId] then
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+
+	DataService.Update(player, function(saved)
+		saved.purchases[receipt.PurchaseId] = true
+		saved.cosmetics.owned[item.id] = true
+		saved.cosmetics.equipped[item.kind] = item.id
+	end)
+
+	if not DataService.SaveNow(player) then
+		-- Keep the item, Roblox will call again and the purchase id stops a double grant
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	Remotes.Notify:FireClient(player, "You got " .. item.name .. "! It's equipped.", "success")
+	return Enum.ProductPurchaseDecision.PurchaseGranted
+end
+
+function ShopService.Start()
+	DataService.OnLoaded(function(player, _, runtime)
+		checkPasses(player, runtime)
+	end)
+	MarketplaceService.PromptGamePassPurchaseFinished:Connect(onPassPurchased)
+	MarketplaceService.ProcessReceipt = processReceipt
+end
+
+return ShopService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">WorldService</string><ProtectedString name="Source"><![CDATA[-- Connects the world to the game: market and rod shop prompts, zone gates,
+-- the global leaderboard board and the weekly event board.
+
+local DataStoreService = game:GetService("DataStoreService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Config = require(Shared.Config)
+local Zones = require(Shared.Zones)
+local Events = require(Shared.Events)
+local Format = require(Shared.Format)
+local Remotes = require(Shared.Remotes)
+
+local EconomyService = require(script.Parent.EconomyService)
+
+local WorldService = {}
+
+local LEADERBOARD_REFRESH = 120
+
+local function hookPrompt(prompt)
+	local holder = prompt.Parent
+	if not holder then
+		return
+	end
+	local station = holder:GetAttribute("Station")
+	local gateZone = holder:GetAttribute("ZoneGate")
+	if station == "Sell" then
+		prompt.Triggered:Connect(function(player)
+			local ok, message = EconomyService.SellAll(player)
+			if not ok and message then
+				Remotes.Notify:FireClient(player, message, "warning")
+			end
+		end)
+	elseif station == "Rods" then
+		prompt.Triggered:Connect(function(player)
+			Remotes.OpenPanel:FireClient(player, "Rods")
+		end)
+	elseif gateZone then
+		prompt.Triggered:Connect(function(player)
+			local ok, message = EconomyService.UnlockZone(player, gateZone)
+			if not ok and message then
+				Remotes.Notify:FireClient(player, message, "warning")
+			end
+		end)
+	end
+end
+
+local function makeBoardFace(boardPart, titleText, face)
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "BoardGui"
+	gui.Face = face
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 30
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 12)
+	padding.PaddingLeft = UDim.new(0, 16)
+	padding.PaddingRight = UDim.new(0, 16)
+	padding.Parent = gui
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.Size = UDim2.new(1, 0, 0.16, 0)
+	title.BackgroundTransparency = 1
+	title.Text = titleText
+	title.TextScaled = true
+	title.Font = Enum.Font.FredokaOne
+	title.TextColor3 = Color3.fromRGB(255, 220, 120)
+	title.Parent = gui
+	local body = Instance.new("TextLabel")
+	body.Name = "Body"
+	body.Position = UDim2.new(0, 0, 0.18, 0)
+	body.Size = UDim2.new(1, 0, 0.8, 0)
+	body.BackgroundTransparency = 1
+	body.Text = "Loading..."
+	body.TextScaled = true
+	body.TextXAlignment = Enum.TextXAlignment.Left
+	body.TextYAlignment = Enum.TextYAlignment.Top
+	body.Font = Enum.Font.GothamMedium
+	body.TextColor3 = Color3.new(1, 1, 1)
+	body.Parent = gui
+	gui.Parent = boardPart
+	return body
+end
+
+-- Boards show the same text on both sides. Returns a function that sets the text.
+local function makeBoardGui(boardPart, titleText)
+	local front = makeBoardFace(boardPart, titleText, Enum.NormalId.Front)
+	local back = makeBoardFace(boardPart, titleText, Enum.NormalId.Back)
+	return function(text)
+		front.Text = text
+		back.Text = text
+	end
+end
+
+local function findStation(name)
+	for _, item in ipairs(Workspace:GetDescendants()) do
+		if item:IsA("BasePart") and item:GetAttribute("Station") == name then
+			return item
+		end
+	end
+	return nil
+end
+
+local nameCache = {}
+local function nameFor(userId)
+	if nameCache[userId] then
+		return nameCache[userId]
+	end
+	local ok, name = pcall(function()
+		return Players:GetNameFromUserIdAsync(userId)
+	end)
+	nameCache[userId] = ok and name or ("Player " .. userId)
+	return nameCache[userId]
+end
+
+local function runLeaderboard(boardPart)
+	local setText = makeBoardGui(boardPart, "Most Fish Caught")
+	local store = DataStoreService:GetOrderedDataStore(Config.LeaderboardStoreName)
+	while true do
+		local ok, pages = pcall(function()
+			return store:GetSortedAsync(false, 10)
+		end)
+		if ok then
+			local lines = {}
+			for rank, entry in ipairs(pages:GetCurrentPage()) do
+				table.insert(lines, string.format("%d. %s  -  %s", rank, nameFor(tonumber(entry.key)), Format.Number(entry.value)))
+			end
+			setText(#lines > 0 and table.concat(lines, "\n") or "No catches yet. Be the first!")
+		else
+			setText("Leaderboard unavailable right now.")
+		end
+		task.wait(LEADERBOARD_REFRESH)
+	end
+end
+
+local function runEventBoard(boardPart)
+	local setText = makeBoardGui(boardPart, "This Week's Legend")
+	while true do
+		local fish, weekLeft = Events.GetEventFish()
+		local weather, weatherLeft = Events.GetWeather()
+		local zone = Zones.ById[fish.zone]
+		setText(string.format(
+			"%s\nonly in %s\nends in %s\n\nWeather: %s\n%s\n(changes in %s)",
+			fish.name,
+			zone and zone.name or fish.zone,
+			Format.Duration(weekLeft),
+			weather.name,
+			weather.description,
+			Format.Duration(weatherLeft)
+		))
+		task.wait(1)
+	end
+end
+
+function WorldService.Start()
+	for _, item in ipairs(Workspace:GetDescendants()) do
+		if item:IsA("ProximityPrompt") then
+			hookPrompt(item)
+		end
+	end
+	Workspace.DescendantAdded:Connect(function(item)
+		if item:IsA("ProximityPrompt") then
+			task.defer(hookPrompt, item)
+		end
+	end)
+
+	local leaderboard = findStation("Leaderboard")
+	if leaderboard then
+		task.spawn(runLeaderboard, leaderboard)
+	end
+	local eventBoard = findStation("EventBoard")
+	if eventBoard then
+		task.spawn(runEventBoard, eventBoard)
+	end
+end
+
+return WorldService
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX0000001D"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000001C"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX0000001B"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[-- Reel Legends player script. Builds the screen and starts fishing controls.
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+
+local UI = require(script.UI)
+local Notifications = require(script.Notifications)
+local Panels = require(script.Panels)
+local Hud = require(script.Hud)
+local Fishing = require(script.Fishing)
+local World = require(script.World)
+
+local player = Players.LocalPlayer
+
+local screenGui = UI.new("ScreenGui", {
+	Name = "ReelLegendsUI",
+	ResetOnSpawn = false,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	Parent = player:WaitForChild("PlayerGui"),
+})
+
+-- Shrink the whole UI on small screens (phones)
+local scale = UI.new("UIScale", { Parent = screenGui })
+local function rescale()
+	local camera = Workspace.CurrentCamera
+	if camera then
+		local size = camera.ViewportSize
+		scale.Scale = math.clamp(math.min(size.X / 1100, size.Y / 700), 0.55, 1.2)
+	end
+end
+while not Workspace.CurrentCamera do
+	task.wait()
+end
+Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
+rescale()
+
+-- The reel minigame gets its own unscaled screen so its tap area covers everything
+local fishingGui = UI.new("ScreenGui", {
+	Name = "ReelFishingUI",
+	ResetOnSpawn = false,
+	DisplayOrder = 5,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	Parent = player.PlayerGui,
+})
+
+Notifications.Init(screenGui)
+Panels.Init(screenGui)
+Hud.Init(screenGui)
+Fishing.Init(fishingGui)
+World.Init()
+
+Notifications.Show("Equip your rod (press 1) and click the water to fish!", "info")
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">Fishing</string><ProtectedString name="Source"><![CDATA[-- Casting and the reel minigame on the player's screen.
+-- Equip the rod, click (or tap) the water, wait for the bite, then tap when the
+-- moving needle is inside the green zone.
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Fish = require(Shared.Fish)
+local Format = require(Shared.Format)
+local Remotes = require(Shared.Remotes)
+
+local UI = require(script.Parent.UI)
+local Notifications = require(script.Parent.Notifications)
+local T = UI.Theme
+
+local Fishing = {}
+
+local ROD_NAME = "Fishing Rod"
+local BITE_TIMEOUT = 25 -- give up waiting if the server never sends a bite
+local MINIGAME_SECONDS = 10
+
+local player = Players.LocalPlayer
+local mouse = player:GetMouse()
+local screenGui
+local statusLabel
+
+local phase = "idle" -- idle, waiting, reeling
+local waitToken = 0
+
+local function setStatus(text)
+	statusLabel.Text = text or ""
+	statusLabel.Visible = text ~= nil
+end
+
+local function reset()
+	phase = "idle"
+	waitToken += 1
+	setStatus(nil)
+end
+
+local function isWater(result)
+	if not result then
+		return false
+	end
+	if result.Instance == Workspace.Terrain then
+		return result.Material == Enum.Material.Water
+	end
+	return result.Instance:GetAttribute("FishingZone") ~= nil
+end
+
+-- Where the bobber should land: where the player clicked if that is water,
+-- otherwise a spot in front of them.
+local function castTarget(root)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { player.Character }
+	params.IgnoreWater = false
+
+	local ray = mouse.UnitRay
+	local hit = Workspace:Raycast(ray.Origin, ray.Direction * 300, params)
+	if isWater(hit) then
+		return hit.Position
+	end
+
+	local look = root.CFrame.LookVector
+	local ahead = root.Position + Vector3.new(look.X, 0, look.Z).Unit * 25
+	return Vector3.new(ahead.X, 0.5, ahead.Z)
+end
+
+local function cast()
+	if phase == "reeling" then
+		return
+	end
+	if phase == "waiting" then
+		-- Clicking again reels the line back in
+		Remotes.CancelCast:FireServer()
+		reset()
+		return
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+
+	local ok, landed = pcall(function()
+		return Remotes.Cast:InvokeServer(castTarget(root))
+	end)
+	if not ok or not landed then
+		return
+	end
+
+	phase = "waiting"
+	waitToken += 1
+	local token = waitToken
+	setStatus("Waiting for a bite...  (click again to reel in)")
+	task.delay(BITE_TIMEOUT, function()
+		if waitToken == token and phase == "waiting" then
+			reset()
+		end
+	end)
+end
+
+local hookedTools = setmetatable({}, { __mode = "k" })
+local function hookTool(tool)
+	if not hookedTools[tool] then
+		hookedTools[tool] = true
+		tool.Activated:Connect(cast)
+	end
+end
+
+local function watchCharacter(character)
+	reset()
+	character.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") and child.Name == ROD_NAME then
+			hookTool(child)
+		end
+	end)
+	character.ChildRemoved:Connect(function(child)
+		if child:IsA("Tool") and child.Name == ROD_NAME and phase ~= "idle" then
+			Remotes.CancelCast:FireServer()
+			reset()
+		end
+	end)
+end
+
+-- The reel minigame. Calls done(true) if the player lands every hit.
+local function playMinigame(info, done)
+	local hitsNeeded = info.hits or 1
+	local speed = (info.speed or 1) * 0.65 -- bar widths per second
+	local zoneWidth = math.clamp(0.22 + (info.control or 0) - (hitsNeeded - 1) * 0.03, 0.08, 0.5)
+	local rarity = Fish.RarityById[info.rarity]
+
+	local overlay = UI.new("TextButton", {
+		Name = "ReelOverlay",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Text = "",
+		ZIndex = 20,
+		Parent = screenGui,
+	})
+	local box = UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -110),
+		Size = UDim2.fromOffset(440, 120),
+		BackgroundColor3 = T.Background,
+		ZIndex = 21,
+		Parent = overlay,
+	}, { UI.corner(14), UI.stroke(rarity and rarity.color or T.Accent, 3) })
+	local title = UI.label("", { Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 30), ZIndex = 22, Parent = box })
+	local bar = UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 50),
+		Size = UDim2.new(1, -40, 0, 34),
+		BackgroundColor3 = T.Card,
+		ZIndex = 22,
+		Parent = box,
+	}, { UI.corner(8) })
+	local zone = UI.new("Frame", { Size = UDim2.new(zoneWidth, 0, 1, 0), BackgroundColor3 = T.Good, ZIndex = 23, Parent = bar }, { UI.corner(8) })
+	local needle = UI.new("Frame", { AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.new(0, 6, 1, 10), Position = UDim2.new(0, 0, 0, -5), BackgroundColor3 = T.Text, ZIndex = 24, Parent = bar })
+	UI.label("Tap / click / Space when the line is in the green!", { Position = UDim2.new(0, 0, 1, -28), Size = UDim2.new(1, 0, 0, 20), Font = T.BodyFont, TextColor3 = T.Muted, ZIndex = 22, Parent = box })
+
+	local hits = 0
+	local position, direction = 0, 1
+	local zoneStart = 0
+	local finished = false
+	local connections = {}
+
+	local function placeZone()
+		zoneStart = math.random() * (1 - zoneWidth)
+		zone.Position = UDim2.new(zoneStart, 0, 0, 0)
+		title.Text = string.format("%s bite!  %d/%d", info.rarity or "", hits, hitsNeeded)
+	end
+	placeZone()
+
+	local function finish(success)
+		if finished then
+			return
+		end
+		finished = true
+		for _, connection in ipairs(connections) do
+			connection:Disconnect()
+		end
+		overlay:Destroy()
+		done(success)
+	end
+
+	local function press()
+		if finished then
+			return
+		end
+		if position >= zoneStart and position <= zoneStart + zoneWidth then
+			hits += 1
+			if hits >= hitsNeeded then
+				finish(true)
+				return
+			end
+			speed *= 1.15
+			placeZone()
+		else
+			finish(false)
+		end
+	end
+
+	table.insert(connections, overlay.Activated:Connect(press))
+	table.insert(connections, UserInputService.InputBegan:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA or input.KeyCode == Enum.KeyCode.ButtonR2 then
+			press()
+		end
+	end))
+	table.insert(connections, RunService.RenderStepped:Connect(function(dt)
+		position += direction * speed * dt
+		if position >= 1 then
+			position, direction = 1, -1
+		elseif position <= 0 then
+			position, direction = 0, 1
+		end
+		needle.Position = UDim2.new(position, 0, 0, -5)
+	end))
+	task.delay(MINIGAME_SECONDS, function()
+		finish(false)
+	end)
+end
+
+local function showCatch(result)
+	local fish = Fish.ById[result.id]
+	local rarity = Fish.RarityById[fish.rarity]
+	local card = UI.new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.32),
+		Size = UDim2.fromOffset(360, 130),
+		BackgroundColor3 = T.Background,
+		Parent = screenGui,
+	}, { UI.corner(16), UI.stroke(rarity.color, 4), UI.padding(10), UI.list(4) })
+	local top = result.isNew and "NEW FISH!" or "Caught!"
+	UI.label(top, { Size = UDim2.new(1, 0, 0, 22), TextColor3 = result.isNew and T.Gold or T.Muted, Parent = card })
+	UI.label((result.shiny and "Shiny " or "") .. fish.name, { Size = UDim2.new(1, 0, 0, 36), TextColor3 = rarity.color, Parent = card })
+	UI.label(string.format("%s  -  %s  -  worth %s coins", fish.rarity, Format.Weight(result.weight), Format.Number(result.value)), {
+		Size = UDim2.new(1, 0, 0, 22),
+		Font = T.BodyFont,
+		Parent = card,
+	})
+	task.delay(2.5, function()
+		local tween = TweenService:Create(card, TweenInfo.new(0.3), { BackgroundTransparency = 1 })
+		tween:Play()
+		tween.Completed:Wait()
+		card:Destroy()
+	end)
+end
+
+function Fishing.Init(gui)
+	screenGui = gui
+	statusLabel = UI.label("", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -120),
+		Size = UDim2.fromOffset(460, 30),
+		Visible = false,
+		TextStrokeTransparency = 0.4,
+		Parent = gui,
+	})
+
+	if player.Character then
+		watchCharacter(player.Character)
+		local tool = player.Character:FindFirstChild(ROD_NAME)
+		if tool then
+			hookTool(tool)
+		end
+	end
+	player.CharacterAdded:Connect(watchCharacter)
+
+	Remotes.Bite.OnClientEvent:Connect(function(castId, info)
+		if phase ~= "waiting" then
+			return
+		end
+		phase = "reeling"
+		setStatus(nil)
+		playMinigame(info, function(success)
+			Remotes.Reel:FireServer(castId, success)
+			if phase == "reeling" then
+				setStatus("Reeling...")
+			end
+		end)
+	end)
+
+	Remotes.CatchResult.OnClientEvent:Connect(function(_, result)
+		reset()
+		if result then
+			showCatch(result)
+		else
+			Notifications.Show("The fish got away...", "warning")
+		end
+	end)
+end
+
+return Fishing
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000015"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Always-on screen info: coins, bag, the weekly event, and the menu buttons.
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Config = require(Shared.Config)
+local Zones = require(Shared.Zones)
+local Events = require(Shared.Events)
+local Format = require(Shared.Format)
+
+local UI = require(script.Parent.UI)
+local State = require(script.Parent.State)
+local Panels = require(script.Parent.Panels)
+local T = UI.Theme
+
+local Hud = {}
+
+function Hud.Init(screenGui)
+	-- Stats, top left
+	local stats = UI.new("Frame", {
+		Name = "Stats",
+		Position = UDim2.fromOffset(16, 16),
+		Size = UDim2.fromOffset(230, 104),
+		BackgroundColor3 = T.Background,
+		BackgroundTransparency = 0.15,
+		Parent = screenGui,
+	}, { UI.corner(12), UI.padding(10), UI.list(4) })
+	local coins = UI.label("0 coins", { Size = UDim2.new(1, 0, 0, 30), TextColor3 = T.Gold, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1, Parent = stats })
+	local bag = UI.label("Bag 0/20", { Size = UDim2.new(1, 0, 0, 22), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, Parent = stats })
+	local bonus = UI.label("", { Size = UDim2.new(1, 0, 0, 18), Font = T.BodyFont, TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 3, Parent = stats })
+
+	local function update(data, runtime)
+		coins.Text = Format.Number(data.coins) .. " coins"
+		local size = runtime.bagSize or Config.BagSize
+		bag.Text = string.format("Bag %d/%d", #data.bag, size)
+		bag.TextColor3 = #data.bag >= size and T.Bad or T.Text
+		if data.rebirths > 0 then
+			bonus.Text = string.format("Rebirth %d: +%d%% coins", data.rebirths, math.floor((Config.SellMultiplier(data.rebirths) - 1) * 100 + 0.5))
+		else
+			bonus.Text = "Sell fish at the Fish Market"
+		end
+	end
+	State.Changed:Connect(update)
+	if State.data then
+		update(State.data, State.runtime)
+	end
+
+	-- Event and weather banner, top center
+	local banner = UI.new("Frame", {
+		Name = "EventBanner",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 12),
+		Size = UDim2.fromOffset(520, 52),
+		BackgroundColor3 = T.Background,
+		BackgroundTransparency = 0.15,
+		Parent = screenGui,
+	}, { UI.corner(12), UI.padding(6), UI.list(2) })
+	local eventLine = UI.label("", { Size = UDim2.new(1, 0, 0, 20), TextColor3 = T.Gold, Parent = banner })
+	local weatherLine = UI.label("", { Size = UDim2.new(1, 0, 0, 16), Font = T.BodyFont, TextColor3 = T.Muted, Parent = banner })
+	task.spawn(function()
+		while true do
+			local fish, weekLeft = Events.GetEventFish()
+			local zone = Zones.ById[fish.zone]
+			eventLine.Text = string.format("Weekly legend: %s in %s (%s left)", fish.name, zone and zone.name or "", Format.Duration(weekLeft))
+			local weather, weatherLeft = Events.GetWeather()
+			weatherLine.Text = string.format("%s: %s (%s)", weather.name, weather.description, Format.Duration(weatherLeft))
+			task.wait(1)
+		end
+	end)
+
+	-- Menu buttons, left side
+	local menu = UI.new("Frame", {
+		Name = "Menu",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 16, 0.5, 0),
+		Size = UDim2.fromOffset(120, 280),
+		BackgroundTransparency = 1,
+		Parent = screenGui,
+	}, { UI.list(8) })
+	local buttons = {
+		{ "Fish Book", "Book", Color3.fromRGB(80, 160, 255) },
+		{ "Rods", "Rods", Color3.fromRGB(230, 140, 60) },
+		{ "Shop", "Shop", Color3.fromRGB(70, 200, 110) },
+		{ "Travel", "Teleport", Color3.fromRGB(170, 100, 255) },
+		{ "Rebirth", "Rebirth", Color3.fromRGB(255, 90, 160) },
+	}
+	for index, info in ipairs(buttons) do
+		UI.button(info[1], info[3], function()
+			Panels[info[2]].toggle()
+		end, { Size = UDim2.fromOffset(120, 46), LayoutOrder = index, Parent = menu })
+	end
+end
+
+return Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000016"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[-- Small messages that pop up on the right side of the screen.
+
+local TweenService = game:GetService("TweenService")
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Remotes = require(Shared.Remotes)
+
+local UI = require(script.Parent.UI)
+local T = UI.Theme
+
+local Notifications = {}
+
+local COLORS = {
+	success = T.Good,
+	warning = T.Bad,
+	coins = T.Gold,
+	rare = Color3.fromRGB(255, 120, 200),
+	info = T.Accent,
+}
+
+local container
+
+function Notifications.Init(screenGui)
+	container = UI.new("Frame", {
+		Name = "Toasts",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -16, 0, 70),
+		Size = UDim2.fromOffset(320, 400),
+		BackgroundTransparency = 1,
+		Parent = screenGui,
+	}, { UI.list(6) })
+
+	Remotes.Notify.OnClientEvent:Connect(function(text, kind)
+		Notifications.Show(text, kind)
+	end)
+end
+
+function Notifications.Show(text, kind)
+	if not container then
+		return
+	end
+	local toast = UI.new("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 44),
+		BackgroundColor3 = T.Background,
+		BackgroundTransparency = 0.1,
+		Text = text,
+		TextColor3 = COLORS[kind or "info"] or T.Text,
+		Font = T.Font,
+		TextScaled = true,
+		TextWrapped = true,
+		Parent = container,
+	}, { UI.corner(10), UI.padding(6) })
+
+	task.delay(4, function()
+		local tween = TweenService:Create(toast, TweenInfo.new(0.4), { BackgroundTransparency = 1, TextTransparency = 1 })
+		tween:Play()
+		tween.Completed:Wait()
+		toast:Destroy()
+	end)
+
+	-- Keep at most 6 on screen
+	local toasts = {}
+	for _, child in ipairs(container:GetChildren()) do
+		if child:IsA("TextLabel") then
+			table.insert(toasts, child)
+		end
+	end
+	if #toasts > 6 then
+		toasts[1]:Destroy()
+	end
+end
+
+return Notifications
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000017"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- The menus: Fish Book, Rods, Shop, Teleport and Rebirth.
+
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Config = require(Shared.Config)
+local Fish = require(Shared.Fish)
+local Rods = require(Shared.Rods)
+local Zones = require(Shared.Zones)
+local Shop = require(Shared.Shop)
+local Events = require(Shared.Events)
+local Format = require(Shared.Format)
+
+local UI = require(script.Parent.UI)
+local State = require(script.Parent.State)
+local Notifications = require(script.Parent.Notifications)
+local T = UI.Theme
+
+local player = Players.LocalPlayer
+local Panels = {}
+
+local function act(actionName, argument)
+	local ok, message = State.Action(actionName, argument)
+	if not ok and message then
+		Notifications.Show(message, "warning")
+	end
+	return ok
+end
+
+-- Robux prices come from Roblox, so they always match the Creator Dashboard
+local priceCache = {}
+local function robuxPrice(id, infoType, onReady)
+	local key = tostring(infoType) .. id
+	if priceCache[key] then
+		onReady(priceCache[key])
+		return
+	end
+	task.spawn(function()
+		local ok, info = pcall(function()
+			return MarketplaceService:GetProductInfo(id, infoType)
+		end)
+		if ok and info and info.PriceInRobux then
+			priceCache[key] = info.PriceInRobux
+			onReady(info.PriceInRobux)
+		end
+	end)
+end
+
+local function row(parent, height, order)
+	return UI.new("Frame", {
+		Size = UDim2.new(1, -8, 0, height),
+		BackgroundColor3 = T.Card,
+		LayoutOrder = order or 0,
+		Parent = parent,
+	}, { UI.corner(10) })
+end
+
+local function heading(parent, text, order)
+	UI.label(text, { Size = UDim2.new(1, -8, 0, 30), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = T.Gold, LayoutOrder = order, Parent = parent })
+end
+
+------------------------------------------------------------------ Fish Book
+local bookTab = Zones.List[1].id
+
+local function renderBook(body)
+	local data = State.data
+	if not data then
+		return
+	end
+	UI.list(10).Parent = body
+
+	local tabs = UI.new("Frame", { Size = UDim2.new(1, -8, 0, 40), BackgroundTransparency = 1, LayoutOrder = 1, Parent = body }, { UI.list(8, Enum.FillDirection.Horizontal) })
+	local tabList = {}
+	for _, zone in ipairs(Zones.List) do
+		table.insert(tabList, { id = zone.id, name = zone.name, fish = Fish.ByZone[zone.id] or {} })
+	end
+	table.insert(tabList, { id = "event", name = "Legends", fish = Fish.EventFish })
+
+	local found, total = 0, #Fish.List
+	for id in pairs(data.book) do
+		if Fish.ById[id] then
+			found += 1
+		end
+	end
+
+	local current
+	for index, tab in ipairs(tabList) do
+		if tab.id == bookTab then
+			current = tab
+		end
+		UI.button(tab.name, tab.id == bookTab and T.Accent or T.Card, function()
+			bookTab = tab.id
+			Panels.Book.refresh()
+		end, { Size = UDim2.fromOffset(136, 36), LayoutOrder = index, Parent = tabs })
+	end
+	current = current or tabList[1]
+
+	local zoneFound = 0
+	for _, fish in ipairs(current.fish) do
+		if data.book[fish.id] then
+			zoneFound += 1
+		end
+	end
+	UI.label(string.format("%s: %d/%d found   (whole book: %d/%d)", current.name, zoneFound, #current.fish, found, total), {
+		Size = UDim2.new(1, -8, 0, 24),
+		Font = T.BodyFont,
+		TextColor3 = T.Muted,
+		LayoutOrder = 2,
+		Parent = body,
+	})
+
+	local grid = UI.new("Frame", { Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, LayoutOrder = 3, Parent = body }, {
+		UI.new("UIGridLayout", { CellSize = UDim2.fromOffset(134, 112), CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+
+	for index, fish in ipairs(current.fish) do
+		local entry = data.book[fish.id]
+		local rarity = Fish.RarityById[fish.rarity]
+		local card = UI.new("Frame", { BackgroundColor3 = T.Card, LayoutOrder = index, Parent = grid }, { UI.corner(10), UI.stroke(rarity.color, 2), UI.padding(6), UI.list(2) })
+		UI.label(entry and fish.name or "???", { Size = UDim2.new(1, 0, 0, 34), TextWrapped = true, Parent = card })
+		UI.label(fish.rarity, { Size = UDim2.new(1, 0, 0, 18), TextColor3 = rarity.color, Parent = card })
+		local detail = "Not caught yet"
+		if entry then
+			detail = string.format("x%d  best %s", entry.count, Format.Weight(entry.best))
+			if entry.shiny > 0 then
+				detail ..= string.format("\n%d shiny", entry.shiny)
+			end
+		end
+		UI.label(detail, { Size = UDim2.new(1, 0, 0, 34), Font = T.BodyFont, TextColor3 = T.Muted, TextWrapped = true, Parent = card })
+	end
+
+	if current.id == "event" then
+		local eventFish, left = Events.GetEventFish()
+		local zone = Zones.ById[eventFish.zone]
+		UI.label(string.format("This week: %s in %s (ends in %s)", eventFish.name, zone and zone.name or "", Format.Duration(left)), {
+			Size = UDim2.new(1, -8, 0, 24),
+			Font = T.BodyFont,
+			TextColor3 = T.Gold,
+			LayoutOrder = 4,
+			Parent = body,
+		})
+	end
+end
+
+------------------------------------------------------------------ Rods
+local function renderRods(body)
+	local data = State.data
+	if not data then
+		return
+	end
+	UI.list(8).Parent = body
+	for index, rod in ipairs(Rods.List) do
+		local card = row(body, 64, index)
+		UI.label(rod.name, { Position = UDim2.fromOffset(12, 6), Size = UDim2.new(0.6, 0, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = rod.color:Lerp(Color3.new(1, 1, 1), 0.4), Parent = card })
+		local stats = string.format("Luck x%.2f   Bites %d%% faster   Reel zone +%d%%", rod.luck, math.floor((1 - rod.speed) * 100 + 0.5), math.floor(rod.control * 100 + 0.5))
+		UI.label(stats, { Position = UDim2.fromOffset(12, 34), Size = UDim2.new(0.68, 0, 0, 20), TextXAlignment = Enum.TextXAlignment.Left, Font = T.BodyFont, TextColor3 = T.Muted, Parent = card })
+
+		local text, color, onClick
+		if data.equippedRod == rod.id then
+			text, color = "Equipped", T.Card
+		elseif data.rodsOwned[rod.id] then
+			text, color = "Equip", T.Accent
+			onClick = function()
+				act("EquipRod", rod.id)
+			end
+		elseif rod.requiresRebirths and data.rebirths < rod.requiresRebirths then
+			text, color = string.format("%d rebirth", rod.requiresRebirths), T.Card
+		else
+			text = Format.Number(rod.price) .. " coins"
+			color = data.coins >= rod.price and T.Good or T.Bad
+			onClick = function()
+				act("BuyRod", rod.id)
+			end
+		end
+		UI.button(text, color, onClick, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(150, 40), Parent = card })
+	end
+end
+
+------------------------------------------------------------------ Shop
+local function renderShop(body)
+	local data = State.data
+	if not data then
+		return
+	end
+	UI.list(8).Parent = body
+	local order = 0
+	local function nextOrder()
+		order += 1
+		return order
+	end
+
+	heading(body, "Game passes (yours forever)", nextOrder())
+	for _, pass in ipairs(Shop.Passes) do
+		local card = row(body, 64, nextOrder())
+		UI.label(pass.name, { Position = UDim2.fromOffset(12, 6), Size = UDim2.new(0.6, 0, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, Parent = card })
+		UI.label(pass.description, { Position = UDim2.fromOffset(12, 34), Size = UDim2.new(0.68, 0, 0, 20), TextXAlignment = Enum.TextXAlignment.Left, Font = T.BodyFont, TextColor3 = T.Muted, Parent = card })
+		local button = UI.button("...", T.Good, nil, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(130, 40), Parent = card })
+		if State.HasPass(pass.id) then
+			button.Text = "Owned"
+			button.BackgroundColor3 = T.Card
+		elseif pass.gamePassId == 0 then
+			button.Text = "Coming soon"
+			button.BackgroundColor3 = T.Card
+		else
+			robuxPrice(pass.gamePassId, Enum.InfoType.GamePass, function(price)
+				button.Text = "R$ " .. price
+			end)
+			button.Activated:Connect(function()
+				MarketplaceService:PromptGamePassPurchase(player, pass.gamePassId)
+			end)
+		end
+	end
+
+	local function cosmeticRow(item)
+		local card = row(body, 52, nextOrder())
+		local label = UI.label(item.name, { Position = UDim2.fromOffset(12, 0), Size = UDim2.new(0.65, 0, 1, 0), TextXAlignment = Enum.TextXAlignment.Left, Parent = card })
+		UI.new("UIPadding", { PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 12), Parent = label })
+		local owned = data.cosmetics.owned[item.id]
+		local equipped = data.cosmetics.equipped[item.kind] == item.id
+		local button = UI.button("...", T.Good, nil, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(130, 36), Parent = card })
+		if owned then
+			button.Text = equipped and "Unequip" or "Equip"
+			button.BackgroundColor3 = equipped and T.Card or T.Accent
+			button.Activated:Connect(function()
+				act("EquipCosmetic", item.id)
+			end)
+		elseif item.earned then
+			button.Text = "Not earned"
+			button.BackgroundColor3 = T.Card
+		elseif item.productId == 0 then
+			button.Text = "Coming soon"
+			button.BackgroundColor3 = T.Card
+		else
+			robuxPrice(item.productId, Enum.InfoType.Product, function(price)
+				button.Text = "R$ " .. price
+			end)
+			button.Activated:Connect(function()
+				MarketplaceService:PromptProductPurchase(player, item.productId)
+			end)
+		end
+	end
+
+	heading(body, "Rod skins (looks only)", nextOrder())
+	for _, item in ipairs(Shop.Cosmetics) do
+		if item.kind == "rodSkin" then
+			cosmeticRow(item)
+		end
+	end
+	heading(body, "Trails (looks only)", nextOrder())
+	for _, item in ipairs(Shop.Cosmetics) do
+		if item.kind == "trail" then
+			cosmeticRow(item)
+		end
+	end
+	heading(body, "Titles", nextOrder())
+	for _, item in ipairs(Shop.Cosmetics) do
+		if item.kind == "title" then
+			cosmeticRow(item)
+		end
+	end
+	heading(body, "Earned titles (free, unlocked by playing)", nextOrder())
+	for _, item in ipairs(Shop.EarnedTitles) do
+		cosmeticRow(item)
+	end
+end
+
+------------------------------------------------------------------ Teleport
+local function renderTeleport(body)
+	local data = State.data
+	if not data then
+		return
+	end
+	UI.list(8).Parent = body
+	local hasPass = State.HasPass("Teleporter")
+	if not hasPass then
+		UI.label("Walk across the bridges to reach zones, or get the Zone Teleporter pass in the Shop.", {
+			Size = UDim2.new(1, -8, 0, 40),
+			TextWrapped = true,
+			Font = T.BodyFont,
+			TextColor3 = T.Muted,
+			LayoutOrder = 0,
+			Parent = body,
+		})
+	end
+
+	local hubRow = row(body, 56, 1)
+	UI.label("Harbor (hub)", { Position = UDim2.fromOffset(12, 14), Size = UDim2.new(0.6, 0, 0, 28), TextXAlignment = Enum.TextXAlignment.Left, Parent = hubRow })
+	UI.button("Go", T.Accent, function()
+		if act("Teleport", "hub") then
+			Panels.Teleport.close()
+		end
+	end, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(130, 38), Parent = hubRow })
+
+	for index, zone in ipairs(Zones.List) do
+		local card = row(body, 56, index + 1)
+		UI.label(zone.name, { Position = UDim2.fromOffset(12, 14), Size = UDim2.new(0.6, 0, 0, 28), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = zone.color, Parent = card })
+		local props = { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(150, 38), Parent = card }
+		if not data.zones[zone.id] then
+			UI.button("Unlock " .. Format.Number(zone.price), data.coins >= zone.price and T.Good or T.Bad, function()
+				act("UnlockZone", zone.id)
+			end, props)
+		elseif hasPass then
+			UI.button("Go", T.Accent, function()
+				if act("Teleport", zone.id) then
+					Panels.Teleport.close()
+				end
+			end, props)
+		else
+			UI.button("Unlocked", T.Card, nil, props)
+		end
+	end
+end
+
+------------------------------------------------------------------ Rebirth
+local function renderRebirth(body)
+	local data = State.data
+	if not data then
+		return
+	end
+	UI.list(10).Parent = body
+	local cost = Config.RebirthCost(data.rebirths)
+	local nowBonus = math.floor((Config.SellMultiplier(data.rebirths) - 1) * 100 + 0.5)
+	local nextBonus = math.floor((Config.SellMultiplier(data.rebirths + 1) - 1) * 100 + 0.5)
+	local requiredZone = Zones.ById[Config.RebirthRequiresZone]
+
+	local lines = {
+		string.format("Rebirths: %d   (now +%d%% coins from fish)", data.rebirths, nowBonus),
+		string.format("Next rebirth: +%d%% coins from fish, forever", nextBonus),
+		string.format("Cost: %s coins", Format.Number(cost)),
+		"You keep: your Fish Book, titles, skins, trails and passes.",
+		"You reset: coins, rods, unlocked zones and your bag.",
+	}
+	if requiredZone then
+		table.insert(lines, "Requires: " .. requiredZone.name .. " unlocked.")
+	end
+	for index, text in ipairs(lines) do
+		UI.label(text, { Size = UDim2.new(1, -8, 0, 26), TextWrapped = true, Font = index <= 3 and T.Font or T.BodyFont, TextColor3 = index <= 3 and T.Text or T.Muted, LayoutOrder = index, Parent = body })
+	end
+	local ready = data.coins >= cost and (not requiredZone or data.zones[requiredZone.id])
+	UI.button("Rebirth", ready and T.Good or T.Card, function()
+		if act("Rebirth") then
+			Panels.Rebirth.close()
+		end
+	end, { Size = UDim2.fromOffset(200, 50), LayoutOrder = 99, Parent = body })
+end
+
+function Panels.Init(screenGui)
+	Panels.Book = UI.window(screenGui, "Fish Book", renderBook)
+	Panels.Rods = UI.window(screenGui, "Rods", renderRods)
+	Panels.Shop = UI.window(screenGui, "Shop", renderShop)
+	Panels.Teleport = UI.window(screenGui, "Travel", renderTeleport)
+	Panels.Rebirth = UI.window(screenGui, "Rebirth", renderRebirth)
+
+	State.Changed:Connect(function()
+		for _, name in ipairs({ "Book", "Rods", "Shop", "Teleport", "Rebirth" }) do
+			Panels[name].refresh()
+		end
+	end)
+end
+
+return Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[-- The player's latest save data, as sent by the server.
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Remotes = require(Shared.Remotes)
+
+local State = {
+	data = nil,
+	runtime = { passes = {}, bagSize = 20 },
+}
+
+local changed = Instance.new("BindableEvent")
+State.Changed = changed.Event
+
+Remotes.DataUpdate.OnClientEvent:Connect(function(data, runtime)
+	State.data = data
+	State.runtime = runtime or State.runtime
+	changed:Fire(data, State.runtime)
+end)
+
+function State.HasPass(passId)
+	return State.runtime.passes ~= nil and State.runtime.passes[passId] == true
+end
+
+-- Calls a server action and shows its error message if it fails
+function State.Action(actionName, argument)
+	local ok, success, message = pcall(function()
+		return Remotes.Action:InvokeServer(actionName, argument)
+	end)
+	if not ok then
+		return false, "Connection problem, try again"
+	end
+	return success, message
+end
+
+return State
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- Helpers for building the on-screen menus in code, so nothing has to be
+-- drawn by hand in Studio. Colors and fonts live in UI.Theme.
+
+local UI = {}
+
+UI.Theme = {
+	Background = Color3.fromRGB(20, 32, 52),
+	Panel = Color3.fromRGB(30, 46, 74),
+	Card = Color3.fromRGB(42, 62, 96),
+	Accent = Color3.fromRGB(60, 170, 255),
+	Gold = Color3.fromRGB(255, 200, 40),
+	Good = Color3.fromRGB(70, 200, 110),
+	Bad = Color3.fromRGB(230, 80, 80),
+	Muted = Color3.fromRGB(150, 170, 200),
+	Text = Color3.fromRGB(255, 255, 255),
+	Font = Enum.Font.FredokaOne,
+	BodyFont = Enum.Font.GothamMedium,
+}
+
+local T = UI.Theme
+
+-- UI.new("Frame", { Size = ..., Parent = ... }, { child1, child2 })
+function UI.new(className, props, children)
+	local instance = Instance.new(className)
+	local parent = nil
+	for key, value in pairs(props or {}) do
+		if key == "Parent" then
+			parent = value
+		else
+			instance[key] = value
+		end
+	end
+	for _, child in ipairs(children or {}) do
+		child.Parent = instance
+	end
+	instance.Parent = parent
+	return instance
+end
+
+function UI.corner(radius)
+	return UI.new("UICorner", { CornerRadius = UDim.new(0, radius or 10) })
+end
+
+function UI.stroke(color, thickness)
+	return UI.new("UIStroke", { Color = color or Color3.new(0, 0, 0), Thickness = thickness or 2, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
+end
+
+function UI.padding(pixels)
+	local p = UDim.new(0, pixels)
+	return UI.new("UIPadding", { PaddingTop = p, PaddingBottom = p, PaddingLeft = p, PaddingRight = p })
+end
+
+function UI.list(spacing, direction)
+	return UI.new("UIListLayout", {
+		Padding = UDim.new(0, spacing or 8),
+		FillDirection = direction or Enum.FillDirection.Vertical,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+end
+
+function UI.label(text, props)
+	local label = UI.new("TextLabel", {
+		BackgroundTransparency = 1,
+		Text = text,
+		TextColor3 = T.Text,
+		Font = T.Font,
+		TextScaled = true,
+		Size = UDim2.new(1, 0, 0, 24),
+	})
+	for key, value in pairs(props or {}) do
+		label[key] = value
+	end
+	return label
+end
+
+function UI.button(text, color, onClick, props)
+	local button = UI.new("TextButton", {
+		Text = text,
+		BackgroundColor3 = color or T.Accent,
+		TextColor3 = T.Text,
+		Font = T.Font,
+		TextScaled = true,
+		AutoButtonColor = true,
+		Size = UDim2.fromOffset(120, 40),
+	}, { UI.corner(8), UI.new("UIPadding", { PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }) })
+	for key, value in pairs(props or {}) do
+		button[key] = value
+	end
+	if onClick then
+		button.Activated:Connect(onClick)
+	end
+	return button
+end
+
+function UI.clear(container)
+	for _, child in ipairs(container:GetChildren()) do
+		child:Destroy()
+	end
+end
+
+-- A centered window with a title, a close button and a scrolling body.
+-- Only one window is open at a time.
+local openWindow = nil
+
+function UI.window(screenGui, title, render)
+	local frame = UI.new("Frame", {
+		Name = title .. "Window",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(620, 440),
+		BackgroundColor3 = T.Panel,
+		Visible = false,
+		Parent = screenGui,
+	}, { UI.corner(16), UI.stroke(T.Background, 4) })
+
+	UI.label(title, { Position = UDim2.fromOffset(20, 12), Size = UDim2.new(1, -90, 0, 36), TextXAlignment = Enum.TextXAlignment.Left, Parent = frame })
+
+	local body = UI.new("ScrollingFrame", {
+		Name = "Body",
+		Position = UDim2.fromOffset(16, 60),
+		Size = UDim2.new(1, -32, 1, -76),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 8,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(),
+		Parent = frame,
+	})
+
+	local window = { frame = frame, body = body }
+
+	function window.refresh()
+		if frame.Visible then
+			UI.clear(body)
+			render(body)
+		end
+	end
+
+	function window.open()
+		if openWindow and openWindow ~= window then
+			openWindow.close()
+		end
+		openWindow = window
+		frame.Visible = true
+		window.refresh()
+	end
+
+	function window.close()
+		frame.Visible = false
+		if openWindow == window then
+			openWindow = nil
+		end
+	end
+
+	function window.toggle()
+		if frame.Visible then
+			window.close()
+		else
+			window.open()
+		end
+	end
+
+	UI.button("X", T.Bad, window.close, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -12, 0, 12),
+		Size = UDim2.fromOffset(40, 40),
+		Parent = frame,
+	})
+
+	return window
+end
+
+return UI
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- Things in the world that only this player sees: weather, opened zone gates
+-- and the VIP door.
+
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Events = require(Shared.Events)
+local Remotes = require(Shared.Remotes)
+
+local State = require(script.Parent.State)
+local Panels = require(script.Parent.Panels)
+
+local World = {}
+
+local LOOKS = {
+	Clear = { ClockTime = 14, Brightness = 2.5, Density = 0.25, Color = Color3.fromRGB(200, 220, 255), Rain = 0 },
+	Rain = { ClockTime = 13, Brightness = 1.2, Density = 0.4, Color = Color3.fromRGB(150, 160, 175), Rain = 300 },
+	Fog = { ClockTime = 9, Brightness = 1.5, Density = 0.62, Color = Color3.fromRGB(200, 205, 210), Rain = 0 },
+	Storm = { ClockTime = 19, Brightness = 0.8, Density = 0.5, Color = Color3.fromRGB(90, 95, 120), Rain = 700 },
+	GoldenHour = { ClockTime = 17.6, Brightness = 2.2, Density = 0.3, Color = Color3.fromRGB(255, 190, 120), Rain = 0 },
+}
+
+local atmosphere
+local rainEmitter
+
+local function setupWeatherEffects()
+	atmosphere = Lighting:FindFirstChildOfClass("Atmosphere") or Instance.new("Atmosphere")
+	atmosphere.Parent = Lighting
+
+	local rainPart = Instance.new("Part")
+	rainPart.Name = "RainCloud"
+	rainPart.Anchored = true
+	rainPart.CanCollide = false
+	rainPart.CanQuery = false
+	rainPart.CanTouch = false
+	rainPart.Transparency = 1
+	rainPart.Size = Vector3.new(120, 1, 120)
+	rainEmitter = Instance.new("ParticleEmitter")
+	rainEmitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	rainEmitter.Color = ColorSequence.new(Color3.fromRGB(180, 200, 255))
+	rainEmitter.Size = NumberSequence.new(0.15)
+	rainEmitter.Lifetime = NumberRange.new(1.2)
+	rainEmitter.Speed = NumberRange.new(50)
+	rainEmitter.EmissionDirection = Enum.NormalId.Bottom
+	rainEmitter.Rate = 0
+	rainEmitter.Parent = rainPart
+	rainPart.Parent = Workspace
+
+	RunService.RenderStepped:Connect(function()
+		local camera = Workspace.CurrentCamera
+		if camera then
+			rainPart.Position = camera.CFrame.Position + Vector3.new(0, 40, 0)
+		end
+	end)
+end
+
+local currentWeather = nil
+local function applyWeather()
+	local weather = Events.GetWeather()
+	if weather.id == currentWeather then
+		return
+	end
+	currentWeather = weather.id
+	local look = LOOKS[weather.id] or LOOKS.Clear
+	local info = TweenInfo.new(5)
+	TweenService:Create(Lighting, info, { ClockTime = look.ClockTime, Brightness = look.Brightness }):Play()
+	TweenService:Create(atmosphere, info, { Density = look.Density, Color = look.Color }):Play()
+	rainEmitter.Rate = look.Rain
+end
+
+local function updateGates()
+	local data = State.data
+	if not data then
+		return
+	end
+	local vip = State.HasPass("VIP")
+	for _, item in ipairs(Workspace:GetDescendants()) do
+		if item:IsA("BasePart") then
+			local zoneId = item:GetAttribute("ZoneGate")
+			if zoneId then
+				local open = data.zones[zoneId] == true
+				item.CanCollide = not open
+				item.Transparency = open and 0.9 or 0
+				local prompt = item:FindFirstChildOfClass("ProximityPrompt")
+				if prompt then
+					prompt.Enabled = not open
+				end
+				for _, gui in ipairs(item:GetChildren()) do
+					if gui:IsA("SurfaceGui") then
+						gui.Enabled = not open
+					end
+				end
+			elseif item:GetAttribute("VipDoor") then
+				item.CanCollide = not vip
+				item.Transparency = vip and 0.8 or 0.5
+			end
+		end
+	end
+end
+
+function World.Init()
+	setupWeatherEffects()
+	applyWeather()
+	task.spawn(function()
+		while true do
+			task.wait(2)
+			applyWeather()
+		end
+	end)
+
+	State.Changed:Connect(updateGates)
+	updateGates()
+
+	Remotes.OpenPanel.OnClientEvent:Connect(function(name)
+		local panel = Panels[name]
+		if panel then
+			panel.open()
+		end
+	end)
+end
+
+return World
+]]></ProtectedString></Properties></Item></Item></Item></Item></roblox>
