@@ -11,7 +11,7 @@ islands and fill your Fish Book.
 - **43 fish** across 3 zones (Sunny Shallows, Misty Mangroves, Frostbite Bay), 6 rarities from
   Common to Mythic, random weights, and rare **Shiny** variants worth 3x.
 - **Fish Book** that tracks every species, how many you caught and your heaviest.
-- **8 rods** bought with coins. Better rods raise luck, bite speed and the reel zone size.
+- **8 rods** bought with coins. Better rods raise luck and bite speed, and make the reeling fight easier.
 - **Over-the-shoulder camera** that follows the mouse (Alt frees the cursor); phones keep touch controls.
 - **Fishing that needs attention:** fake nibbles tempt you to strike early, the real bite gives you
   under a second to strike or the fish steals your bait, then a **tension fight**: hold to reel,

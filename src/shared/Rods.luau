@@ -1,7 +1,7 @@
 -- Rods are bought with in-game coins only (never Robux).
 -- luck: multiplies the chance of Rare and better fish
 -- speed: multiplies the wait for a bite (lower is faster)
--- control: makes the green reel zone wider
+-- control: reel faster with less line tension during the fight
 
 local Rods = {}
 

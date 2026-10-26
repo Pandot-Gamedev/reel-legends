@@ -362,7 +362,7 @@ local function renderRods(body)
 	for index, rod in ipairs(Rods.List) do
 		local card = row(body, 64, index)
 		UI.label(rod.name, { Position = UDim2.fromOffset(12, 6), Size = UDim2.new(0.6, 0, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = rod.color:Lerp(Color3.new(1, 1, 1), 0.4), Parent = card })
-		local stats = string.format("Luck x%.2f   Bites %d%% faster   Reel zone +%d%%", rod.luck, math.floor((1 - rod.speed) * 100 + 0.5), math.floor(rod.control * 100 + 0.5))
+		local stats = string.format("Luck x%.2f   Bites %d%% faster   Fight control +%d%%", rod.luck, math.floor((1 - rod.speed) * 100 + 0.5), math.floor(rod.control * 100 + 0.5))
 		UI.label(stats, { Position = UDim2.fromOffset(12, 34), Size = UDim2.new(0.68, 0, 0, 20), TextXAlignment = Enum.TextXAlignment.Left, Font = T.BodyFont, TextColor3 = T.Muted, Parent = card })
 
 		local text, color, onClick
