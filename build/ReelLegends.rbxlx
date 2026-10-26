@@ -4644,9 +4644,16 @@ local function robuxPrice(id, infoType, onReady)
 		return
 	end
 	task.spawn(function()
+		-- Asks Roblox every time instead of hard-coding prices, so each player sees
+		-- their own regional price
 		local ok, info = pcall(function()
-			return MarketplaceService:GetProductInfo(id, infoType)
+			return MarketplaceService:GetProductInfoAsync(id, infoType)
 		end)
+		if not ok then
+			ok, info = pcall(function()
+				return MarketplaceService:GetProductInfo(id, infoType)
+			end)
+		end
 		if ok and info and info.PriceInRobux then
 			priceCache[key] = info.PriceInRobux
 			onReady(info.PriceInRobux)
