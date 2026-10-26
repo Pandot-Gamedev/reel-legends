@@ -10,6 +10,7 @@ local Panels = require(script.Panels)
 local Hud = require(script.Hud)
 local Fishing = require(script.Fishing)
 local World = require(script.World)
+local Guide = require(script.Guide)
 
 local player = Players.LocalPlayer
 
@@ -50,6 +51,5 @@ Panels.Init(screenGui)
 Hud.Init(screenGui)
 Fishing.Init(fishingGui)
 World.Init()
+Guide.Init(screenGui)
 
-Notifications.Show("Press 1 for your rod, aim at the water and click to cast!", "info")
-Notifications.Show("Don't strike at nibbles. Click fast when you see the big \"!\"", "info")

@@ -40,6 +40,13 @@ function CameraController.Shake(amount, seconds)
 	shakeUntil = math.max(shakeUntil, os.clock() + seconds)
 end
 
+-- Colors the aiming dot (nil = plain white)
+function CameraController.SetCrosshairColor(color)
+	if crosshair then
+		crosshair.BackgroundColor3 = color or Color3.new(1, 1, 1)
+	end
+end
+
 -- The ray the player is aiming along: screen center when locked, else the mouse
 function CameraController.AimRay()
 	local camera = Workspace.CurrentCamera

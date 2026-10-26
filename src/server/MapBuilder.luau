@@ -7,6 +7,9 @@
 --   ZoneSpawn   = "frostbite"  where the teleporter drops players
 --   Station     = "Sell" / "Rods" / "Bait" / "Bounties" / "Leaderboard" / "EventBoard"
 --   VipDoor     = true         door only VIP players can walk through
+--   Hotspot     = true         bubbling spot: bites come sooner when you cast near it
+--   Npc         = "OldPete"    where a shopkeeper stands (see NpcService)
+--   GuideTarget = "Dock"       where Old Pete's guide arrow points
 
 local Workspace = game:GetService("Workspace")
 
@@ -158,6 +161,122 @@ local function board(folder, name, cframe, size, station)
 	return p
 end
 
+local function lamp(folder, position)
+	part({ Name = "LampPost", Size = Vector3.new(0.6, 9, 0.6), Position = position + Vector3.new(0, 4.5, 0), Color = Color3.fromRGB(50, 50, 55), Material = Enum.Material.Metal, Parent = folder })
+	local bulb = part({ Name = "LampBulb", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.4, Position = position + Vector3.new(0, 9.4, 0), Color = Color3.fromRGB(255, 220, 150), Material = Enum.Material.Neon, CanCollide = false, Parent = folder })
+	local light = Instance.new("PointLight")
+	light.Range = 22
+	light.Brightness = 1.2
+	light.Color = Color3.fromRGB(255, 210, 150)
+	light.Parent = bulb
+end
+
+local function crate(folder, position, random)
+	local size = random:NextNumber(2.5, 4)
+	part({ Name = "Crate", Size = Vector3.one * size, CFrame = CFrame.new(position + Vector3.new(0, size / 2, 0)) * CFrame.Angles(0, random:NextNumber(0, math.pi), 0), Material = Enum.Material.WoodPlanks, Color = Color3.fromRGB(170, 125, 75), Parent = folder })
+end
+
+local function barrel(folder, position)
+	part({ Name = "Barrel", Shape = Enum.PartType.Cylinder, Size = Vector3.new(3.5, 2.6, 2.6), CFrame = CFrame.new(position + Vector3.new(0, 1.75, 0)) * CFrame.Angles(0, 0, math.rad(90)), Material = Enum.Material.Wood, Color = Color3.fromRGB(120, 80, 45), Parent = folder })
+end
+
+-- Bubbles on the water where fish gather
+local function hotspot(folder, position)
+	local spot = part({ Name = "Hotspot", Size = Vector3.new(8, 0.2, 8), Position = Vector3.new(position.X, 0.2, position.Z), Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false, Parent = folder })
+	spot:SetAttribute("Hotspot", true)
+	local bubbles = Instance.new("ParticleEmitter")
+	bubbles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	bubbles.Color = ColorSequence.new(Color3.fromRGB(220, 250, 255))
+	bubbles.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 1.2) })
+	bubbles.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
+	bubbles.Lifetime = NumberRange.new(0.6, 1.2)
+	bubbles.Speed = NumberRange.new(2, 4)
+	bubbles.SpreadAngle = Vector2.new(25, 25)
+	bubbles.EmissionDirection = Enum.NormalId.Top
+	bubbles.Rate = 14
+	bubbles.Parent = spot
+	local ring = Instance.new("ParticleEmitter")
+	ring.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	ring.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+	ring.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 5) })
+	ring.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 1) })
+	ring.Lifetime = NumberRange.new(1.5)
+	ring.Speed = NumberRange.new(0)
+	ring.Orientation = Enum.ParticleOrientation.VelocityPerpendicular
+	ring.EmissionDirection = Enum.NormalId.Top
+	ring.Rate = 1.5
+	ring.Parent = spot
+	return spot
+end
+
+-- A wooden dock sticking out over the water, with a sign, a lantern and a
+-- bubbling hotspot off the end. direction is a flat unit vector.
+local function dock(folder, start, direction, length, guideTarget)
+	local finish = start + direction * length
+	local center = (start + finish) / 2
+	local look = CFrame.lookAt(Vector3.new(center.X, GROUND_Y - 0.5, center.Z), Vector3.new(finish.X, GROUND_Y - 0.5, finish.Z))
+	part({ Name = "Dock", Size = Vector3.new(8, 1, length), CFrame = look, Material = Enum.Material.WoodPlanks, Color = Color3.fromRGB(160, 115, 70), Parent = folder })
+	for i = 0, math.floor(length / 8) do
+		for _, side in ipairs({ -3.6, 3.6 }) do
+			local at = look * CFrame.new(side, -3, -length / 2 + i * 8)
+			part({ Name = "DockPost", Size = Vector3.new(0.8, 7, 0.8), CFrame = at, Material = Enum.Material.Wood, Color = Color3.fromRGB(100, 70, 45), Parent = folder })
+		end
+	end
+	local signPost = part({ Name = "DockSign", Size = Vector3.new(7, 2.4, 0.4), CFrame = look * CFrame.new(0, 5, length / 2 - 0.5) * CFrame.new(0, 0, 0), Color = Color3.fromRGB(60, 40, 30), Parent = folder })
+	sign(signPost, "FISHING DOCK", Enum.NormalId.Back, Color3.fromRGB(255, 230, 160))
+	sign(signPost, "FISHING DOCK", Enum.NormalId.Front, Color3.fromRGB(255, 230, 160))
+	for _, side in ipairs({ -3.6, 3.6 }) do
+		part({ Name = "SignPole", Size = Vector3.new(0.4, 6.5, 0.4), CFrame = look * CFrame.new(side, 3, length / 2 - 0.5), Color = Color3.fromRGB(100, 70, 45), Parent = folder })
+	end
+	lamp(folder, Vector3.new(finish.X, GROUND_Y, finish.Z) - direction * 1.5 + look.RightVector * 3.4)
+
+	local endMarker = part({ Name = "DockEnd", Size = Vector3.new(4, 1, 4), Position = Vector3.new(finish.X, GROUND_Y + 0.5, finish.Z) - direction * 3, Transparency = 1, CanCollide = false, CanQuery = false, Parent = folder })
+	if guideTarget then
+		endMarker:SetAttribute("GuideTarget", guideTarget)
+	end
+	hotspot(folder, finish + direction * 10)
+end
+
+local function boat(folder, position, angle, color)
+	local base = CFrame.new(position.X, 0.6, position.Z) * CFrame.Angles(0, angle, 0)
+	part({ Name = "Hull", Size = Vector3.new(6, 2, 12), CFrame = base, Material = Enum.Material.WoodPlanks, Color = color, Parent = folder })
+	local bow = Instance.new("WedgePart")
+	bow.Anchored = true
+	bow.Size = Vector3.new(6, 2, 4)
+	bow.CFrame = base * CFrame.new(0, 0, -8) * CFrame.Angles(0, math.pi, 0)
+	bow.Material = Enum.Material.WoodPlanks
+	bow.Color = color
+	bow.Parent = folder
+	part({ Name = "Bench", Size = Vector3.new(5.6, 0.5, 1.5), CFrame = base * CFrame.new(0, 1, 2), Material = Enum.Material.Wood, Color = Color3.fromRGB(140, 100, 60), Parent = folder })
+	part({ Name = "Mast", Size = Vector3.new(0.5, 10, 0.5), CFrame = base * CFrame.new(0, 5.5, -2), Material = Enum.Material.Wood, Color = Color3.fromRGB(110, 80, 50), Parent = folder })
+	part({ Name = "Sail", Size = Vector3.new(0.2, 6, 5), CFrame = base * CFrame.new(0, 6.5, 0.5), Material = Enum.Material.Fabric, Color = Color3.fromRGB(245, 240, 225), CanCollide = false, Parent = folder })
+end
+
+local function lighthouse(folder, position)
+	for i = 0, 4 do
+		part({
+			Name = "LighthouseBand",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(8, 10 - i * 0.8, 10 - i * 0.8),
+			CFrame = CFrame.new(position + Vector3.new(0, 4 + i * 8, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+			Color = i % 2 == 0 and Color3.fromRGB(240, 240, 240) or Color3.fromRGB(200, 50, 50),
+			Parent = folder,
+		})
+	end
+	local lamp = part({ Name = "LighthouseLamp", Shape = Enum.PartType.Ball, Size = Vector3.one * 5, Position = position + Vector3.new(0, 42.5, 0), Color = Color3.fromRGB(255, 240, 170), Material = Enum.Material.Neon, Parent = folder })
+	local light = Instance.new("PointLight")
+	light.Range = 60
+	light.Brightness = 2
+	light.Parent = lamp
+	part({ Name = "LighthouseRoof", Size = Vector3.new(7, 1, 7), Position = position + Vector3.new(0, 45.5, 0), Color = Color3.fromRGB(60, 60, 70), Parent = folder })
+end
+
+-- Where a shopkeeper stands. By default they face +Z (the front of the stalls).
+local function npcSpot(folder, npc, position, turn)
+	local spot = part({ Name = npc .. "Spot", Size = Vector3.new(2, 1, 2), CFrame = CFrame.new(position + Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, turn or math.pi, 0), Transparency = 1, CanCollide = false, CanQuery = false, Parent = folder })
+	spot:SetAttribute("Npc", npc)
+end
+
 function MapBuilder.Build()
 	if Workspace:FindFirstChild("Map") then
 		return -- the creator made their own map
@@ -219,6 +338,43 @@ function MapBuilder.Build()
 	board(map, "GlobalBoard", CFrame.new(0, GROUND_Y + 10, -60), Vector3.new(28, 18, 1), "Leaderboard")
 	board(map, "EventBoard", CFrame.new(-55, GROUND_Y + 7, 25) * CFrame.Angles(0, math.rad(90), 0), Vector3.new(20, 12, 1), "EventBoard")
 
+	-- The water all around the hub is part of Sunny Shallows, so new players can fish right away
+	local hubWater = part({ Name = "HubWater", Size = Vector3.new(260, 1, 600), Position = Vector3.new(0, 0.5, 0), Transparency = 1, CanCollide = false, CanTouch = false, Parent = fishing })
+	hubWater:SetAttribute("FishingZone", "shallows")
+
+	dock(scenery, Vector3.new(-30, 0, 78), Vector3.new(0, 0, 1), 30, "Dock")
+	dock(scenery, Vector3.new(-78, 0, -5), Vector3.new(-1, 0, 0), 32)
+	dock(scenery, Vector3.new(25, 0, -78), Vector3.new(0, 0, -1), 32)
+	for _, at in ipairs({ Vector3.new(-100, 0, 60), Vector3.new(95, 0, 70), Vector3.new(-95, 0, -80) }) do
+		hotspot(scenery, at)
+	end
+	boat(scenery, Vector3.new(-42, 0, 98), math.rad(8), Color3.fromRGB(70, 120, 200))
+	boat(scenery, Vector3.new(-100, 0, 8), math.rad(95), Color3.fromRGB(200, 80, 70))
+	lighthouse(scenery, Vector3.new(-62, GROUND_Y, -62))
+
+	npcSpot(scenery, "Marina", Vector3.new(-35, GROUND_Y, -27.6))
+	npcSpot(scenery, "Rodney", Vector3.new(35, GROUND_Y, -27.6))
+	npcSpot(scenery, "TackleTom", Vector3.new(35, GROUND_Y, 5.4))
+	npcSpot(scenery, "OldPete", Vector3.new(-20, GROUND_Y, 46), math.rad(-50))
+
+	-- Paths, lamps and clutter so the hub feels lived in
+	for _, path in ipairs({
+		{ Vector3.new(0, 0, -15), Vector3.new(8, 0.2, 90) },
+		{ Vector3.new(0, 0, -10), Vector3.new(110, 0.2, 8) },
+		{ Vector3.new(-15, 0, 63), Vector3.new(38, 0.2, 7) },
+	}) do
+		part({ Name = "Path", Size = path[2], Position = path[1] + Vector3.new(0, GROUND_Y + 0.05, 0), Material = Enum.Material.Pebble, Color = Color3.fromRGB(200, 185, 150), CanCollide = false, Parent = scenery })
+	end
+	for _, at in ipairs({ Vector3.new(6, 0, 10), Vector3.new(-6, 0, -30), Vector3.new(-20, 0, -14), Vector3.new(20, 0, -14), Vector3.new(50, 0, -5), Vector3.new(-50, 0, -5), Vector3.new(-30, 0, 66) }) do
+		lamp(scenery, at + Vector3.new(0, GROUND_Y, 0))
+	end
+	for _, at in ipairs({ Vector3.new(-46, 0, -22), Vector3.new(-44, 0, -18), Vector3.new(44, 0, 12), Vector3.new(-36, 0, 70) }) do
+		crate(scenery, at + Vector3.new(0, GROUND_Y, 0), random)
+	end
+	for _, at in ipairs({ Vector3.new(-25, 0, -22), Vector3.new(26, 0, 12), Vector3.new(-24, 0, 70), Vector3.new(46, 0, -22) }) do
+		barrel(scenery, at + Vector3.new(0, GROUND_Y, 0))
+	end
+
 	-- VIP dock (cosmetic perk: a nice private spot by the hub)
 	part({ Name = "VipDock", Size = Vector3.new(20, 1, 44), Position = Vector3.new(0, GROUND_Y - 0.5, 98), Material = Enum.Material.WoodPlanks, Color = Color3.fromRGB(200, 160, 60), Parent = scenery })
 	local vipDoor = part({ Name = "VipDoor", Size = Vector3.new(20, 12, 1), Position = Vector3.new(0, GROUND_Y + 6, 76.5), Color = Color3.fromRGB(255, 200, 40), Material = Enum.Material.Neon, Transparency = 0.5, Parent = map })
@@ -231,7 +387,8 @@ function MapBuilder.Build()
 	for _ = 1, 14 do
 		local x = random:NextNumber(-64, 64)
 		local z = random:NextNumber(-64, 64)
-		if (math.abs(x) > 52 or math.abs(z) > 52) and math.abs(z - 0) > 8 and math.abs(x) > 12 then
+		local clear = math.abs(z) > 8 and math.abs(x) > 12 and not (x < -45 and z < -45) and not (x < -18 and x > -42 and z > 50)
+		if (math.abs(x) > 52 or math.abs(z) > 52) and clear then
 			tree(scenery, Vector3.new(x, GROUND_Y, z), Color3.fromRGB(60, 160, 60), random)
 		end
 	end
@@ -255,6 +412,11 @@ function MapBuilder.Build()
 				tree(scenery, Vector3.new(x, GROUND_Y, z), look.leaves, random)
 			end
 		end
+
+		dock(scenery, Vector3.new(centerX + 15, 0, -53), Vector3.new(0, 0, -1), 26)
+		hotspot(scenery, Vector3.new(centerX - 70, 0, 35))
+		hotspot(scenery, Vector3.new(centerX + 65, 0, 50))
+		hotspot(scenery, Vector3.new(centerX - 20, 0, 80))
 
 		local zoneSign = part({ Name = "ZoneSign", Size = Vector3.new(24, 6, 1), Position = Vector3.new(centerX, GROUND_Y + 14, -40), Color = Color3.fromRGB(30, 40, 60), Parent = scenery })
 		sign(zoneSign, zone.name, Enum.NormalId.Front, zone.color)

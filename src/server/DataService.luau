@@ -11,6 +11,7 @@ local Config = require(Shared.Config)
 local Rods = require(Shared.Rods)
 local Zones = require(Shared.Zones)
 local Remotes = require(Shared.Remotes)
+local Level = require(Shared.Level)
 
 local DataService = {}
 
@@ -22,6 +23,8 @@ local function defaultData()
 		totalEarned = 0,
 		totalCaught = 0,
 		rebirths = 0,
+		xp = 0,
+		tutorial = 1, -- step of Old Pete's guide (Shared/Tutorial)
 		bag = {}, -- { {uid, id, weight, value, shiny, favorite} }
 		nextUid = 1,
 		bait = {
@@ -159,7 +162,7 @@ end
 local function setupLeaderstats(player)
 	local folder = Instance.new("Folder")
 	folder.Name = "leaderstats"
-	for _, name in ipairs({ "Coins", "Caught", "Rebirths" }) do
+	for _, name in ipairs({ "Level", "Coins", "Caught", "Rebirths" }) do
 		local value = Instance.new("IntValue")
 		value.Name = name
 		value.Parent = folder
@@ -175,6 +178,7 @@ local function refresh(player)
 	local data = profile.data
 	local stats = player:FindFirstChild("leaderstats")
 	if stats then
+		stats.Level.Value = Level.FromXp(data.xp)
 		stats.Coins.Value = data.coins
 		stats.Caught.Value = data.totalCaught
 		stats.Rebirths.Value = data.rebirths
@@ -201,9 +205,9 @@ function DataService.Update(player, change)
 	if not profile then
 		return nil
 	end
-	local result = change(profile.data, profile.runtime)
+	local results = table.pack(change(profile.data, profile.runtime))
 	refresh(player)
-	return result
+	return table.unpack(results, 1, results.n)
 end
 
 function DataService.Refresh(player)

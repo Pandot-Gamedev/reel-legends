@@ -1,4 +1,5 @@
--- Shows cosmetics on characters: titles, trails, rod skins and VIP extras.
+-- Shows each player's name tag (name, angler level, title, VIP) and cosmetics:
+-- trails, rod skins and VIP extras.
 -- Also hands out free titles players earn by playing.
 
 local Players = game:GetService("Players")
@@ -7,6 +8,7 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Fish = require(Shared.Fish)
 local Shop = require(Shared.Shop)
 local Remotes = require(Shared.Remotes)
+local Level = require(Shared.Level)
 
 local DataService = require(script.Parent.DataService)
 local ShopService = require(script.Parent.ShopService)
@@ -63,36 +65,42 @@ local function applyToCharacter(player)
 	local vip = ShopService.HasPass(player, "VIP")
 	local title = equippedItem(data, "title")
 
-	if title or vip then
-		local gui = Instance.new("BillboardGui")
-		gui.Name = "ReelTitle"
-		gui.Size = UDim2.fromOffset(220, 50)
-		gui.StudsOffset = Vector3.new(0, 2.6, 0)
-		gui.MaxDistance = 90
-		gui.Adornee = head
-		local layout = Instance.new("UIListLayout")
-		layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-		layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-		layout.Parent = gui
-		local function line(text, color)
-			local label = Instance.new("TextLabel")
-			label.Size = UDim2.new(1, 0, 0.5, 0)
-			label.BackgroundTransparency = 1
-			label.Text = text
-			label.TextColor3 = color
-			label.TextScaled = true
-			label.Font = Enum.Font.FredokaOne
-			label.TextStrokeTransparency = 0.4
-			label.Parent = gui
-		end
-		if vip then
-			line("VIP", VIP_GOLD)
-		end
-		if title then
-			line(title.text, title.color)
-		end
-		gui.Parent = head
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	end
+
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "ReelTitle"
+	gui.Size = UDim2.fromOffset(240, 72)
+	gui.StudsOffset = Vector3.new(0, 3, 0)
+	gui.MaxDistance = 90
+	gui.Adornee = head
+	local layout = Instance.new("UIListLayout")
+	layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = gui
+	local order = 0
+	local function line(text, color, height)
+		order += 1
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, 0, 0, height or 22)
+		label.BackgroundTransparency = 1
+		label.Text = text
+		label.TextColor3 = color
+		label.TextScaled = true
+		label.Font = Enum.Font.FredokaOne
+		label.TextStrokeTransparency = 0.4
+		label.LayoutOrder = order
+		label.Parent = gui
+	end
+	if title then
+		line(title.text, title.color, 18)
+	end
+	line(player.DisplayName, vip and VIP_GOLD or Color3.new(1, 1, 1), 24)
+	line(string.format("%sLv %d Angler", vip and "VIP  " or "", Level.FromXp(data.xp)), Color3.fromRGB(150, 220, 255), 18)
+	gui.Parent = head
 
 	if vip then
 		local crown = Instance.new("Part")
@@ -143,6 +151,7 @@ local function signature(data, runtime)
 		tostring(equipped.title),
 		tostring(equipped.trail),
 		tostring(runtime.passes and runtime.passes.VIP),
+		tostring(Level.FromXp(data.xp)),
 	}, "|")
 end
 

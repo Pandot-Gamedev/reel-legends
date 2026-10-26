@@ -1,5 +1,6 @@
 -- Fishing on the player's screen.
---   1. Equip the rod and click the water to cast.
+--   1. Equip the rod and click the water to cast. The dot in the middle of the
+--      screen tells you if you can fish where you're aiming. Walking reels in.
 --   2. Watch the bobber. Little nibbles are fish testing the bait: don't strike!
 --   3. When it plunges and "!" appears, click fast to strike, or the fish
 --      steals your bait.
@@ -17,10 +18,13 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Fish = require(Shared.Fish)
 local Fight = require(Shared.Fight)
 local Format = require(Shared.Format)
+local Config = require(Shared.Config)
+local Zones = require(Shared.Zones)
 local Remotes = require(Shared.Remotes)
 
 local UI = require(script.Parent.UI)
 local Notifications = require(script.Parent.Notifications)
+local State = require(script.Parent.State)
 local CameraController = require(script.Parent.CameraController)
 local T = UI.Theme
 
@@ -34,12 +38,14 @@ local MESSAGES = {
 	stolen = "Too slow! The fish stole your bait.",
 	snapped = "SNAP! The line broke. Let go when the tension bar goes red.",
 	escaped = "It got away! Don't let go for too long.",
+	walked = "You walked away, so you reeled your line in.",
 }
 
 local player = Players.LocalPlayer
 local screenGui
 local statusLabel
 local alertLabel
+local aimLabel
 
 local phase = "idle" -- idle, casting, waiting, bite, fight, done
 local castId = nil
@@ -82,7 +88,26 @@ local function flashAlert(text, color, seconds)
 	end)
 end
 
+-- While the line is out the player stands still. Trying to walk reels it in.
+local rooted = nil
+local function setRooted(on)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if on and humanoid and not rooted then
+		rooted = { humanoid = humanoid, speed = humanoid.WalkSpeed }
+		humanoid.WalkSpeed = 0
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
+	elseif not on and rooted then
+		if rooted.humanoid.Parent then
+			rooted.humanoid.WalkSpeed = rooted.speed > 0 and rooted.speed or 16
+			rooted.humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+		end
+		rooted = nil
+	end
+end
+
 local function reset()
+	setRooted(false)
 	phase = "idle"
 	castId = nil
 	token += 1
@@ -145,6 +170,7 @@ local function cast()
 	end
 	phase = "waiting"
 	castId = id
+	setRooted(true)
 	play("splash", 1.2)
 	setStatus("Wait for the bite (!)... don't strike at nibbles")
 	token += 1
@@ -217,13 +243,6 @@ local function startFight(id, params)
 	local connections = {}
 	local finished = false
 
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local oldSpeed = humanoid and humanoid.WalkSpeed
-	if humanoid then
-		humanoid.WalkSpeed = 0
-		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
-	end
 
 	local box = UI.new("Frame", {
 		Name = "Fight",
@@ -253,10 +272,6 @@ local function startFight(id, params)
 			connection:Disconnect()
 		end
 		box:Destroy()
-		if humanoid then
-			humanoid.WalkSpeed = oldSpeed or 16
-			humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
-		end
 		if outcome == "snapped" then
 			CameraController.Shake(4, 0.3)
 		end
@@ -341,7 +356,95 @@ local function startFight(id, params)
 	end))
 end
 
+------------------------------------------------------------------ Aiming
+
+local hotspots = {}
+local function nearHotspot(position)
+	for _, spot in ipairs(hotspots) do
+		if spot.Parent and Vector3.new(spot.Position.X - position.X, 0, spot.Position.Z - position.Z).Magnitude <= 12 then
+			return true
+		end
+	end
+	return false
+end
+
+-- What happens if the player casts where they are aiming right now
+local function aimInfo(root)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { player.Character }
+	params.IgnoreWater = false
+	local ray = CameraController.IsActive() and CameraController.AimRay() or player:GetMouse().UnitRay
+	local hit = Workspace:Raycast(ray.Origin, ray.Direction * 300, params)
+	if not hit then
+		return "Aim at the water", T.Muted
+	end
+	local zoneId = hit.Instance:GetAttribute("FishingZone")
+	if not zoneId then
+		if hit.Instance == Workspace.Terrain and hit.Material == Enum.Material.Water then
+			return "No fish out here. Try near an island", T.Muted
+		end
+		return "Aim at the water", T.Muted
+	end
+	local flat = Vector3.new(hit.Position.X - root.Position.X, 0, hit.Position.Z - root.Position.Z)
+	if flat.Magnitude > Config.MaxCastDistance then
+		return "Too far. Get closer to the water", T.Gold
+	end
+	local data = State.data
+	if data and not data.zones[zoneId] then
+		local zone = Zones.ById[zoneId]
+		return "Locked: unlock " .. (zone and zone.name or zoneId) .. " first", T.Bad
+	end
+	if nearHotspot(hit.Position) then
+		return "Hotspot! Click to cast (faster bites)", Color3.fromRGB(90, 230, 255)
+	end
+	return "Click to cast", T.Good
+end
+
+local function updateAim()
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local holding = character and character:FindFirstChild(ROD_NAME)
+	if phase ~= "idle" or not holding or not root then
+		aimLabel.Visible = false
+		CameraController.SetCrosshairColor(nil)
+		return
+	end
+	local text, color = aimInfo(root)
+	if not UserInputService.MouseEnabled then
+		text = text:gsub("Click", "Tap")
+	end
+	aimLabel.Text = text
+	aimLabel.TextColor3 = color
+	aimLabel.Visible = true
+	CameraController.SetCrosshairColor(color)
+end
+
 ------------------------------------------------------------------ Results
+
+local function confetti(colors)
+	for _ = 1, 40 do
+		local size = math.random(8, 14)
+		local piece = UI.new("Frame", {
+			Position = UDim2.new(math.random(), 0, 0, -20),
+			Size = UDim2.fromOffset(size, size * 0.6),
+			Rotation = math.random(0, 360),
+			BackgroundColor3 = colors[math.random(1, #colors)],
+			BorderSizePixel = 0,
+			ZIndex = 40,
+			Parent = screenGui,
+		})
+		local fall = TweenService:Create(piece, TweenInfo.new(math.random(15, 28) / 10, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Position = UDim2.new(piece.Position.X.Scale + (math.random() - 0.5) * 0.2, 0, 1.1, 0),
+			Rotation = piece.Rotation + math.random(-360, 360),
+		})
+		fall:Play()
+		fall.Completed:Connect(function()
+			piece:Destroy()
+		end)
+	end
+end
+
 
 local function showCatch(result)
 	local fish = Fish.ById[result.id]
@@ -353,10 +456,19 @@ local function showCatch(result)
 		BackgroundColor3 = T.Background,
 		Parent = screenGui,
 	}, { UI.corner(16), UI.stroke(rarity.color, 4), UI.padding(10), UI.list(4) })
-	local top = result.isNew and "NEW FISH! Added to your Fish Book" or "Caught!"
-	UI.label(top, { Size = UDim2.new(1, 0, 0, 22), TextColor3 = result.isNew and T.Gold or T.Muted, Parent = card })
+	local top = "Caught!"
+	if result.isNew then
+		top = "NEW FISH! Added to your Fish Book"
+	elseif result.isRecord then
+		top = "NEW PERSONAL RECORD!"
+	end
+	UI.label(top, { Size = UDim2.new(1, 0, 0, 22), TextColor3 = (result.isNew or result.isRecord) and T.Gold or T.Muted, Parent = card })
 	UI.label((result.shiny and "Shiny " or "") .. fish.name, { Size = UDim2.new(1, 0, 0, 36), TextColor3 = rarity.color, Parent = card })
-	UI.label(string.format("%s  -  %s  -  worth %s coins", fish.rarity, Format.Weight(result.weight), Format.Number(result.value)), {
+	if result.isNew or result.isRecord or rarity.order >= 4 then
+		confetti({ rarity.color, T.Gold, Color3.new(1, 1, 1), T.Accent })
+		play("ping", 1.3)
+	end
+	UI.label(string.format("%s  -  %s  -  %s coins  -  +%d XP", fish.rarity, Format.Weight(result.weight), Format.Number(result.value), result.xp or 0), {
 		Size = UDim2.new(1, 0, 0, 22),
 		Font = T.BodyFont,
 		Parent = card,
@@ -383,6 +495,34 @@ function Fishing.Init(gui)
 		TextStrokeTransparency = 0.4,
 		Parent = gui,
 	})
+	aimLabel = UI.label("", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.5, 16),
+		Size = UDim2.fromOffset(420, 22),
+		Visible = false,
+		TextStrokeTransparency = 0.3,
+		Parent = gui,
+	})
+	for _, item in ipairs(Workspace:GetDescendants()) do
+		if item:IsA("BasePart") and item:GetAttribute("Hotspot") then
+			table.insert(hotspots, item)
+		end
+	end
+	local aimClock = 0
+	RunService.Heartbeat:Connect(function(dt)
+		-- Trying to walk while the line is out reels it in
+		if rooted and (phase == "waiting" or phase == "bite") and rooted.humanoid.MoveDirection.Magnitude > 0.1 then
+			Remotes.CancelCast:FireServer()
+			reset()
+			Notifications.Show(MESSAGES.walked, "info")
+		end
+		aimClock += dt
+		if aimClock >= 0.1 then
+			aimClock = 0
+			updateAim()
+		end
+	end)
+
 	alertLabel = UI.label("!", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.38),

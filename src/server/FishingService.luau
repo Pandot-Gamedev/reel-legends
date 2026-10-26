@@ -19,16 +19,23 @@ local Zones = require(Shared.Zones)
 local Events = require(Shared.Events)
 local Bait = require(Shared.Bait)
 local Fight = require(Shared.Fight)
+local FishModel = require(Shared.FishModel)
+local Level = require(Shared.Level)
+local Format = require(Shared.Format)
 local Remotes = require(Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
 local ShopService = require(script.Parent.ShopService)
 local EconomyService = require(script.Parent.EconomyService)
 local CosmeticService = require(script.Parent.CosmeticService)
+local TutorialService = require(script.Parent.TutorialService)
 
 local FishingService = {}
 
 local ROD_NAME = "Fishing Rod"
+local WANDER_LIMIT = 8 -- studs a player may drift from where they cast
+local HOTSPOT_RADIUS = 12
+local HOTSPOT_BITE = 0.65 -- bites come this much sooner at a bubbling hotspot
 
 local random = Random.new()
 local casts = {} -- [player] = current cast
@@ -46,6 +53,17 @@ local function fishingZoneParts()
 end
 
 local zoneParts = {}
+local hotspots = {}
+
+local function nearHotspot(position)
+	for _, spot in ipairs(hotspots) do
+		local flat = Vector3.new(spot.Position.X - position.X, 0, spot.Position.Z - position.Z)
+		if flat.Magnitude <= HOTSPOT_RADIUS then
+			return true
+		end
+	end
+	return false
+end
 
 local function zoneAt(position)
 	for _, zonePart in ipairs(zoneParts) do
@@ -318,6 +336,7 @@ local function onCast(player, target)
 	local bait = currentBait(data)
 	local cast = {
 		id = nextCastId,
+		origin = root.Position,
 		zone = zoneId,
 		phase = "waiting",
 		surface = surface,
@@ -329,6 +348,10 @@ local function onCast(player, target)
 	local rod = Rods.ById[data.equippedRod] or Rods.ById[Rods.Default]
 	local weather = Events.GetWeather()
 	local wait = random:NextNumber(Config.BiteWaitMin, Config.BiteWaitMax) * rod.speed * (weather.biteMultiplier or 1) * (bait.biteSpeed or 1)
+	if nearHotspot(target) then
+		wait *= HOTSPOT_BITE
+	end
+	TutorialService.Event(player, "Cast")
 
 	-- Fake nibbles to tempt an early strike
 	local nibbles = random:NextInteger(0, Config.NibblesMax)
@@ -394,7 +417,8 @@ local function onReel(player, castId, outcome)
 
 	local fish = Fish.ById[cast.catch.id]
 	local caught = cast.catch
-	local isNew = DataService.Update(player, function(data)
+	local levelBefore, levelAfter = 1, 1
+	local isNew, isRecord = DataService.Update(player, function(data)
 		caught.uid = data.nextUid
 		data.nextUid += 1
 		table.insert(data.bag, caught)
@@ -405,12 +429,20 @@ local function onReel(player, castId, outcome)
 			entry = { count = 0, best = 0, shiny = 0 }
 			data.book[caught.id] = entry
 		end
+		local record = not firstTime and caught.weight > entry.best
 		entry.count += 1
 		entry.best = math.max(entry.best, caught.weight)
 		if caught.shiny then
 			entry.shiny += 1
 		end
-		return firstTime
+
+		levelBefore = Level.FromXp(data.xp)
+		data.xp += Level.XpForCatch(caught.id, firstTime)
+		levelAfter = Level.FromXp(data.xp)
+		for level = levelBefore + 1, levelAfter do
+			data.coins += level * Level.CoinsPerLevel
+		end
+		return firstTime, record
 	end)
 
 	Remotes.CatchResult:FireClient(player, castId, {
@@ -419,7 +451,14 @@ local function onReel(player, castId, outcome)
 		value = caught.value,
 		shiny = caught.shiny,
 		isNew = isNew,
+		isRecord = isRecord,
+		xp = Level.XpForCatch(caught.id, isNew),
 	})
+	if levelAfter > levelBefore then
+		Remotes.Notify:FireClient(player, string.format("LEVEL UP! You're now an Lv %d angler. +%s coins", levelAfter, Format.Number(levelAfter * Level.CoinsPerLevel)), "rare")
+	end
+	FishingService.ShowOff(player, caught)
+	TutorialService.Event(player, "Catch")
 	announce(player, fish, caught)
 
 	local data = DataService.Get(player)
@@ -427,6 +466,27 @@ local function onReel(player, castId, outcome)
 	if data and runtime and #data.bag >= runtime.bagSize and ShopService.HasPass(player, "AutoSell") then
 		EconomyService.SellAll(player, true)
 	end
+end
+
+-- The player holds the fish up over their head for everyone to see
+function FishingService.ShowOff(player, caught)
+	local character = player.Character
+	local head = character and character:FindFirstChild("Head")
+	local model = head and FishModel.Build(caught.id, caught.weight, caught.shiny)
+	if not model then
+		return
+	end
+	local length = FishModel.LengthFor(caught.weight)
+	local body = model.PrimaryPart
+	model:PivotTo(head.CFrame * CFrame.new(0, 1.2 + length * 0.25, 0) * CFrame.Angles(0, math.rad(90), 0))
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = head
+	weld.Part1 = body
+	weld.Parent = body
+	model.Parent = character
+	task.delay(2.5, function()
+		model:Destroy()
+	end)
 end
 
 -- Builds the rod tool from the player's equipped rod and rod skin
@@ -498,9 +558,30 @@ end
 
 function FishingService.Start()
 	zoneParts = fishingZoneParts()
+	for _, item in ipairs(Workspace:GetDescendants()) do
+		if item:IsA("BasePart") and item:GetAttribute("Hotspot") then
+			table.insert(hotspots, item)
+		end
+	end
 	Workspace.DescendantAdded:Connect(function(item)
 		if item:IsA("BasePart") and item:GetAttribute("FishingZone") then
 			table.insert(zoneParts, item)
+		elseif item:IsA("BasePart") and item:GetAttribute("Hotspot") then
+			table.insert(hotspots, item)
+		end
+	end)
+
+	-- Walking away from your line reels it in
+	task.spawn(function()
+		while true do
+			task.wait(0.3)
+			for player, cast in pairs(casts) do
+				local character = player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				if not root or (root.Position - cast.origin).Magnitude > WANDER_LIMIT then
+					lose(player, cast, "walked")
+				end
+			end
 		end
 	end)
 

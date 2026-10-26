@@ -17,6 +17,7 @@ local Remotes = require(Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
 local ShopService = require(script.Parent.ShopService)
+local TutorialService = require(script.Parent.TutorialService)
 
 local EconomyService = {}
 
@@ -80,6 +81,9 @@ function EconomyService.SellAll(player, auto)
 		return false, "Nothing to sell (favorites are never sold)"
 	end
 	notify(player, string.format("Sold %d fish for %s coins", count, Format.Number(earned)), "coins")
+	if not auto then
+		TutorialService.Event(player, "Sell")
+	end
 	return true
 end
 
@@ -106,6 +110,7 @@ function EconomyService.SellFish(player, uidText)
 		saved.totalEarned += price
 	end)
 	notify(player, string.format("Sold %s for %s coins", Fish.ById[fish.id].name, Format.Number(price)), "coins")
+	TutorialService.Event(player, "Sell")
 	return true
 end
 

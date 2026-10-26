@@ -13,6 +13,7 @@ local Format = require(Shared.Format)
 local Remotes = require(Shared.Remotes)
 
 local EconomyService = require(script.Parent.EconomyService)
+local TutorialService = require(script.Parent.TutorialService)
 
 local WorldService = {}
 
@@ -29,6 +30,9 @@ local function hookPrompt(prompt)
 	if station and panels[station] then
 		prompt.Triggered:Connect(function(player)
 			Remotes.OpenPanel:FireClient(player, panels[station])
+			if station == "Bounties" then
+				TutorialService.Event(player, "Bounties")
+			end
 		end)
 	elseif gateZone then
 		prompt.Triggered:Connect(function(player)

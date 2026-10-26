@@ -31,23 +31,25 @@ That one file contains the whole game: all scripts are already inside it.
 
 **Try this to check everything works:**
 
+- [ ] Old Pete's guide appears at the top of the screen, with a golden line pointing where to go.
+      Follow it: it covers everything below in about 3 minutes.
 - [ ] Move the mouse: the camera turns with it, over your character's shoulder. Scroll to zoom.
       Press **Alt** to get the mouse pointer back (press again to lock it).
-- [ ] Press **1** to hold your fishing rod.
-- [ ] Walk onto the first bridge, aim at the water and click. A red bobber lands.
+- [ ] Press **1** to hold your rod. The text under the dot in the middle of the screen says whether
+      you can fish where you're aiming ("Click to cast", "Hotspot!", "Locked", "Aim at the water").
+- [ ] Walk to the end of a **Fishing Dock** and cast near the bubbles (a hotspot: faster bites).
+- [ ] While the line is out you can't walk. Pressing a movement key reels the line back in.
 - [ ] Watch for small **"nibble..."** dips. Don't click on those, or you scare the fish away.
 - [ ] When a big **"!"** appears and the bobber plunges, click fast. Too slow and the fish steals your bait.
-- [ ] The fight starts. **Hold** the mouse (or Space) to reel. Let go when the tension bar turns red,
-      and when it says the fish is about to thrash. Fill the Catch bar to land it.
-- [ ] A card shows the fish you caught. Your **Bag** count (top left) goes up.
-- [ ] Press **Q** to open your Bag. Mark a fish as a favorite ("Keep?") so it's never sold.
-- [ ] Walk to the **Fish Market** stall and press **E**. Sell one fish, or sell everything except
-      favorites. Fish marked IN DEMAND sell for double.
-- [ ] Press **E** at **Bait & Tackle**: buy Worms, or make Shrimp out of 3 Common fish.
-      Then pick it in your Bag so it goes on your hook.
-- [ ] Press **E** at **Old Pete's Bounties** (or press **N**): today's three fish requests.
-- [ ] Try **Fish Book (B)**, **Rods (R)**, **Shop (P)**, **Travel (T)** and **Rebirth**.
-- [ ] The top banner shows this week's legendary fish and the weather.
+- [ ] The fight: **hold** the mouse (or Space) to reel. Let go when the tension bar turns red, and
+      when it says the fish is about to thrash. Fill the Catch bar to land it.
+- [ ] Your character holds the fish over their head. New species and records get confetti.
+      Your **level** (top left and above your head) goes up as you catch fish.
+- [ ] Press **Q** for your Bag. Mark a fish as a favorite ("Keep?") so it's never sold.
+- [ ] Sell at **Marina's Fish Market** (press **E** at the stall). In-demand fish sell for double.
+- [ ] **Tackle Tom** sells bait and makes better bait from your spare fish.
+- [ ] **Old Pete** has three bounties a day at his board (or press **N**).
+- [ ] Fish jump out of the water, seagulls circle overhead, and the lighthouse and boats sit by the hub.
 
 A message saying **"Saving is off"** is normal for now. Step 3 fixes it.
 
@@ -80,6 +82,9 @@ The starter world is plain blocks on purpose: it works, and you can dress it up 
 - **Free models can contain bad scripts.** After adding one, expand it in the Explorer and delete
   anything called `Script` or `LocalScript` inside it, unless you know what it does.
 
+> If you already pasted a `Map` into Workspace before an update, delete it (or rename it) so the
+> game can build the newest starter world, then paste it in again if you want to edit it.
+
 **Bigger change: edit the world itself.** The world is built by code each time the game starts,
 so you can't click on it until you press Play. To make it permanent and editable:
 
@@ -98,6 +103,9 @@ window). If you rebuild something, copy these onto your new parts:
 | `ZoneSpawn` | zone id, or `hub` | Where the Travel menu drops players. |
 | `Station` | `Sell`, `Rods`, `Bait`, `Bounties`, `Leaderboard`, `EventBoard` | Market, rod shop and bait shop counters, the bounty board, and the two info boards. Each needs a ProximityPrompt inside (except the info boards). |
 | `VipDoor` | ticked | Door only VIP players can walk through. |
+| `Hotspot` | ticked | Bubbling spot on the water. Casting within 12 studs gives faster bites. |
+| `Npc` | `OldPete`, `Marina`, `TackleTom` or `Rodney` | Where that character stands, facing the part's front. |
+| `GuideTarget` | `Dock` | Where Old Pete's guide line points for the "cast from the dock" step. |
 
 ## Step 5. Set up the shop (30 minutes)
 

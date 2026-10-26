@@ -12,6 +12,11 @@ islands and fill your Fish Book.
   Common to Mythic, random weights, and rare **Shiny** variants worth 3x.
 - **Fish Book** that tracks every species, how many you caught and your heaviest.
 - **8 rods** bought with coins. Better rods raise luck and bite speed, and make the reeling fight easier.
+- **Old Pete's guide** for new players: step-by-step goals with a golden line to follow.
+- **Lively hub:** shopkeepers (Marina, Tackle Tom, Rodney, Old Pete), fishing docks with lanterns,
+  bubbling hotspots, boats, a lighthouse, jumping fish and seagulls.
+- **Angler level** shown above your head, with coin rewards per level. Catches are held up over
+  your head for everyone to see; new species and records get confetti.
 - **Over-the-shoulder camera** that follows the mouse (Alt frees the cursor); phones keep touch controls.
 - **Fishing that needs attention:** fake nibbles tempt you to strike early, the real bite gives you
   under a second to strike or the fish steals your bait, then a **tension fight**: hold to reel,
@@ -57,6 +62,9 @@ src/shared/              ReplicatedStorage.Shared (used by server and players)
   Bait.luau              bait list, prices and recipes
   Market.luau            sell prices and in-demand fish
   Bounties.luau          daily bounty generation and rewards
+  Level.luau             angler XP and levels
+  Tutorial.luau          Old Pete's guide steps
+  FishModel.luau         builds 3D fish from parts
 src/server/              ServerScriptService.Server
   DataService            loading, saving, leaderstats
   FishingService         casting, bites, catches (server decides the fish)
@@ -64,6 +72,8 @@ src/server/              ServerScriptService.Server
   ShopService            game passes and receipt processing
   CosmeticService        titles, trails, rod skins, VIP extras, earned titles
   WorldService           prompts, gates, leaderboard and event boards
+  TutorialService        moves players through Old Pete's guide
+  NpcService             spawns the shopkeepers
   MapBuilder             builds a starter world when Workspace has no "Map"
 src/client/              StarterPlayerScripts.Client (all UI is built in code, plus the camera)
 tools/build_place.py     builds build/ReelLegends.rbxlx from src/

@@ -7,6 +7,7 @@ local Config = require(Shared.Config)
 local Zones = require(Shared.Zones)
 local Events = require(Shared.Events)
 local Bait = require(Shared.Bait)
+local Level = require(Shared.Level)
 local Format = require(Shared.Format)
 
 local UI = require(script.Parent.UI)
@@ -22,17 +23,25 @@ function Hud.Init(screenGui)
 	local stats = UI.new("Frame", {
 		Name = "Stats",
 		Position = UDim2.fromOffset(16, 16),
-		Size = UDim2.fromOffset(230, 126),
+		Size = UDim2.fromOffset(230, 160),
 		BackgroundColor3 = T.Background,
 		BackgroundTransparency = 0.15,
 		Parent = screenGui,
 	}, { UI.corner(12), UI.padding(10), UI.list(4) })
+	local levelLine = UI.label("Lv 1 Angler", { Size = UDim2.new(1, 0, 0, 22), TextColor3 = Color3.fromRGB(150, 220, 255), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 0, Parent = stats })
+	local xpBack = UI.new("Frame", { Size = UDim2.new(1, 0, 0, 6), BackgroundColor3 = T.Card, LayoutOrder = 0, Parent = stats }, { UI.corner(3) })
+	local xpFill = UI.new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(150, 220, 255), Parent = xpBack }, { UI.corner(3) })
+	levelLine.LayoutOrder = -2
+	xpBack.LayoutOrder = -1
 	local coins = UI.label("0 coins", { Size = UDim2.new(1, 0, 0, 30), TextColor3 = T.Gold, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1, Parent = stats })
 	local bag = UI.label("Bag 0/20", { Size = UDim2.new(1, 0, 0, 22), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, Parent = stats })
 	local baitLine = UI.label("Bait: Bread", { Size = UDim2.new(1, 0, 0, 18), Font = T.BodyFont, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 3, Parent = stats })
 	local bonus = UI.label("", { Size = UDim2.new(1, 0, 0, 18), Font = T.BodyFont, TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 4, Parent = stats })
 
 	local function update(data, runtime)
+		local progress, level = Level.Progress(data.xp or 0)
+		levelLine.Text = string.format("Lv %d Angler", level)
+		xpFill.Size = UDim2.fromScale(math.clamp(progress, 0, 1), 1)
 		coins.Text = Format.Number(data.coins) .. " coins"
 		local size = runtime.bagSize or Config.BagSize
 		bag.Text = string.format("Bag %d/%d", #data.bag, size)
