@@ -1,7 +1,7 @@
 -- Everything sold for Robux. Nothing here changes which fish you catch or how
 -- many coins you earn: only looks and time-savers.
 --
--- HOW TO FILL IN THE IDS (see docs/SETUP_GUIDE.md, step 6):
+-- HOW TO FILL IN THE IDS (see docs/SETUP_GUIDE.md, step 5):
 --   Game passes: Creator Dashboard > your game > Monetization > Passes
 --   Cosmetics:   Creator Dashboard > your game > Monetization > Developer Products
 -- An id of 0 means "not set up yet": the item shows as "Coming soon" in the shop.

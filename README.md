@@ -77,6 +77,7 @@ src/server/              ServerScriptService.Server
   MapBuilder             builds a starter world when Workspace has no "Map"
 src/client/              StarterPlayerScripts.Client (all UI is built in code, plus the camera)
 tools/build_place.py     builds build/ReelLegends.rbxlx from src/
+tools/make_store_art.py  draws the game icon, thumbnails and shop icons into store/
 ```
 
 Rebuild the place file after changing scripts:

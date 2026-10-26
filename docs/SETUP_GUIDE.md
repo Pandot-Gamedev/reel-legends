@@ -70,9 +70,10 @@ Press the red **Stop** button (Shift+F5) to stop playing.
 
 From now on, after any change in Studio, use **File > Publish to Roblox** to update the live game.
 
-## Step 4. Make it look nicer (optional, 30-60 minutes, any time)
+## Step 4. Make it look nicer (optional, any time)
 
-The starter world is plain blocks on purpose: it works, and you can dress it up whenever you like.
+You can skip this step: the hub is already decorated by the game's code (docks, boats, lighthouse,
+lamps, shopkeepers). Come back here whenever you want to add more.
 
 **Easy way: add decorations.** Open **Toolbox** (View > Toolbox), search for things like
 "palm tree", "dock", "lighthouse", "boat", "snow pine", and drag them onto the islands.
@@ -117,8 +118,8 @@ Until you do this step, shop items show **"Coming soon"**.
 1. Go to [create.roblox.com/dashboard/creations](https://create.roblox.com/dashboard/creations)
    and click your game.
 2. In the left menu: **Monetization > Passes > Create a Pass**.
-3. Upload an image (any square picture is fine for now; I can describe icons later),
-   type the name, click **Create Pass**.
+3. Upload the matching image from the `store` folder in this repository (for example
+   `store/pass_vip.png`), type the name, click **Create Pass**.
 4. Click the new pass > **Sales** > turn on **Item for Sale**, set the price, **Save**.
 5. Copy the pass **ID** (the number in the page address, or via the "..." menu > Copy Asset ID).
 
@@ -134,7 +135,8 @@ Make these four (suggested prices in Robux):
 ### 5b. Create the cosmetic products
 
 In the same left menu: **Monetization > Developer Products > Create a Developer Product**.
-Make one for each item below, then copy each product's **ID**.
+Make one for each item below, with its image from the `store` folder (for example
+`store/product_skin_golden.png`), then copy each product's **ID**.
 
 | Product | Price |
 |---|---|
@@ -176,8 +178,9 @@ turn on, price **50-100 Robux a month**. Players love fishing with just their fr
    > Catch 40+ fish across 3 islands! Fill your Fish Book, upgrade your rod, and hunt this week's
    > legendary fish. New weather every 15 minutes. Rebirth for permanent coin bonuses.
 
-2. Add a game **icon** (512x512) and at least one **thumbnail** (1920x1080). A screenshot of your
-   character fishing at sunset works well.
+2. Upload `store/game_icon_512.png` as the game **icon**, and `store/thumbnail_1_1920x1080.png`
+   and `store/thumbnail_2_1920x1080.png` as **thumbnails**. A screenshot of a big catch at sunset
+   makes a good third one later.
 3. Fill in the **Maturity & Compliance questionnaire** (required before going public).
 4. In Studio: **Game Settings > Permissions > Playability: Public**. Save.
 5. Share the link with friends and ask them to play for 10 minutes. Watch what confuses them.
