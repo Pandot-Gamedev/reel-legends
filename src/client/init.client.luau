@@ -5,6 +5,7 @@ local Workspace = game:GetService("Workspace")
 
 local UI = require(script.UI)
 local Notifications = require(script.Notifications)
+local CameraController = require(script.CameraController)
 local Panels = require(script.Panels)
 local Hud = require(script.Hud)
 local Fishing = require(script.Fishing)
@@ -44,9 +45,11 @@ local fishingGui = UI.new("ScreenGui", {
 })
 
 Notifications.Init(screenGui)
+CameraController.Init(fishingGui)
 Panels.Init(screenGui)
 Hud.Init(screenGui)
 Fishing.Init(fishingGui)
 World.Init()
 
-Notifications.Show("Equip your rod (press 1) and click the water to fish!", "info")
+Notifications.Show("Press 1 for your rod, aim at the water and click to cast!", "info")
+Notifications.Show("Don't strike at nibbles. Click fast when you see the big \"!\"", "info")

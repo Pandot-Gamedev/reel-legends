@@ -1,7 +1,14 @@
--- Casting, bites and catches. The server decides which fish bites, so players
--- can't pick their own fish. The reel minigame runs on the player's screen.
+-- Casting, nibbles, bites, hooking and catches. The server decides which fish
+-- bites and checks the timing, so players can't pick their own fish. The
+-- reeling fight runs on the player's screen using the shared Fight rules.
+--
+-- A cast goes: waiting (with fake nibbles) -> bite (strike now!) -> fight -> result
+--   strike during waiting  = "early": the fish is scared off (bait kept)
+--   no strike in time      = "stolen": the fish ate the bait
+--   fight lost             = "snapped" or "escaped"
 
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
@@ -10,6 +17,8 @@ local Fish = require(Shared.Fish)
 local Rods = require(Shared.Rods)
 local Zones = require(Shared.Zones)
 local Events = require(Shared.Events)
+local Bait = require(Shared.Bait)
+local Fight = require(Shared.Fight)
 local Remotes = require(Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
@@ -20,7 +29,6 @@ local CosmeticService = require(script.Parent.CosmeticService)
 local FishingService = {}
 
 local ROD_NAME = "Fishing Rod"
-local SECONDS_PER_HIT = 0.3 -- fastest a human can finish each reel hit
 
 local random = Random.new()
 local casts = {} -- [player] = current cast
@@ -111,8 +119,17 @@ local function makeBobber(player, position)
 	return bobber
 end
 
--- Pick which fish bites, using rod luck, weather and the weekly event
-local function rollFish(data, zoneId)
+-- The bait on the hook for this cast (falls back to bread when you run out)
+local function currentBait(data)
+	local bait = Bait.ById[data.bait.equipped]
+	if not bait or (not bait.free and (data.bait.owned[bait.id] or 0) <= 0) then
+		return Bait.ById[Bait.Default]
+	end
+	return bait
+end
+
+-- Pick which fish bites, using rod luck, bait, weather and the weekly event
+local function rollFish(data, zoneId, bait)
 	local rod = Rods.ById[data.equippedRod] or Rods.ById[Rods.Default]
 	local weather = Events.GetWeather()
 	local eventFish = Events.GetEventFish()
@@ -129,10 +146,10 @@ local function rollFish(data, zoneId)
 		if byRarity[rarity.id] then
 			local weight = rarity.weight
 			if rarity.order >= 3 then
-				weight *= rod.luck * (weather.luckMultiplier or 1)
+				weight *= rod.luck * (weather.luckMultiplier or 1) * (bait.luck or 1)
 			end
 			if rarity.order >= 5 then
-				weight *= weather.legendaryMultiplier or 1
+				weight *= (weather.legendaryMultiplier or 1) * (bait.legendary or 1)
 			end
 			total += weight
 			table.insert(choices, { rarity = rarity, weight = weight })
@@ -160,7 +177,8 @@ local function rollFish(data, zoneId)
 	-- Heavier fish are rarer and worth more
 	local roll = random:NextNumber() ^ 1.6
 	local weight = fish.weight[1] + (fish.weight[2] - fish.weight[1]) * roll
-	local shiny = random:NextNumber() < Config.ShinyChance * (weather.shinyMultiplier or 1)
+	local shinyChance = Config.ShinyChance * (weather.shinyMultiplier or 1) * (bait.shiny or 1)
+	local shiny = random:NextNumber() < shinyChance
 	local value = fish.value * (0.75 + 0.5 * roll)
 	if shiny then
 		value *= Config.ShinyValueMultiplier
@@ -185,9 +203,71 @@ local function announce(player, fish, caught)
 	end
 end
 
+-- Ends the cast without a catch and tells the player why
+local function lose(player, cast, reason)
+	if casts[player] == cast then
+		clearCast(player)
+	end
+	Remotes.CatchResult:FireClient(player, cast.id, nil, reason)
+end
+
+local function dipBobber(cast, depth, seconds)
+	local bobber = cast.bobber
+	if not bobber or not bobber.Parent then
+		return
+	end
+	local home = cast.surface
+	local down = TweenService:Create(bobber, TweenInfo.new(seconds / 2), { Position = home - Vector3.new(0, depth, 0) })
+	down:Play()
+	task.delay(seconds / 2, function()
+		if bobber.Parent and cast.phase == "waiting" then
+			TweenService:Create(bobber, TweenInfo.new(seconds / 2), { Position = home }):Play()
+		end
+	end)
+end
+
+local function onBite(player, cast)
+	if casts[player] ~= cast or not player.Parent then
+		return
+	end
+	local data = DataService.Get(player)
+	if not data then
+		return
+	end
+
+	-- The fish takes the bait now, whatever happens next
+	local bait = cast.bait
+	if not bait.free then
+		DataService.Update(player, function(saved)
+			local left = math.max(0, (saved.bait.owned[bait.id] or 0) - 1)
+			saved.bait.owned[bait.id] = left
+			if left == 0 and saved.bait.equipped == bait.id then
+				saved.bait.equipped = Bait.Default
+				Remotes.Notify:FireClient(player, "That was your last " .. bait.name .. ". Back to Bread.", "info")
+			end
+		end)
+	end
+
+	cast.catch = rollFish(data, cast.zone, bait)
+	cast.rarity = Fish.RarityById[Fish.ById[cast.catch.id].rarity]
+	cast.phase = "bite"
+	cast.biteAt = os.clock()
+	if cast.bobber then
+		cast.bobber.Position = cast.surface - Vector3.new(0, 1.2, 0)
+		cast.bobber.Color = Color3.fromRGB(255, 220, 0)
+	end
+	Remotes.Bite:FireClient(player, cast.id, { window = cast.rarity.hookWindow })
+
+	task.delay(cast.rarity.hookWindow + Config.HookGrace, function()
+		if casts[player] == cast and cast.phase == "bite" then
+			lose(player, cast, "stolen")
+		end
+	end)
+end
+
 local function onCast(player, target)
 	if typeof(target) ~= "Vector3" then
-		return
+		return nil
 	end
 	local data = DataService.Get(player)
 	local runtime = DataService.GetRuntime(player)
@@ -195,100 +275,128 @@ local function onCast(player, target)
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not data or not root or not humanoid or humanoid.Health <= 0 or not character:FindFirstChild(ROD_NAME) then
-		return
+		return nil
+	end
+	if casts[player] then
+		return nil
 	end
 	if lastCast[player] and os.clock() - lastCast[player] < Config.CastCooldown then
-		return
+		return nil
 	end
 
 	if #data.bag >= runtime.bagSize then
 		if ShopService.HasPass(player, "AutoSell") then
-			EconomyService.SellAll(player)
-		else
-			Remotes.Notify:FireClient(player, "Your bag is full! Sell your fish at the Fish Market.", "warning")
-			return
+			EconomyService.SellAll(player, true)
+		end
+		data = DataService.Get(player)
+		if #data.bag >= runtime.bagSize then
+			Remotes.Notify:FireClient(player, "Your bag is full! Sell fish at the Fish Market.", "warning")
+			return nil
 		end
 	end
 
 	local flat = Vector3.new(target.X - root.Position.X, 0, target.Z - root.Position.Z)
 	if flat.Magnitude > Config.MaxCastDistance then
 		Remotes.Notify:FireClient(player, "That's too far. Get closer to the water.", "warning")
-		return
+		return nil
 	end
 
 	local zoneId = zoneAt(target)
 	if not zoneId or isOverLand(target, character) then
 		Remotes.Notify:FireClient(player, "Cast into the water to fish.", "warning")
-		return
+		return nil
 	end
 	if not data.zones[zoneId] then
 		local zone = Zones.ById[zoneId]
 		Remotes.Notify:FireClient(player, "Unlock " .. (zone and zone.name or zoneId) .. " to fish here.", "warning")
-		return
+		return nil
 	end
 
-	clearCast(player)
 	lastCast[player] = os.clock()
 	nextCastId += 1
-	local castId = nextCastId
 	local surface = Vector3.new(target.X, 0.3, target.Z)
-	local cast = { id = castId, zone = zoneId, phase = "waiting", bobber = makeBobber(player, surface) }
+	local bait = currentBait(data)
+	local cast = {
+		id = nextCastId,
+		zone = zoneId,
+		phase = "waiting",
+		surface = surface,
+		bait = bait,
+		bobber = makeBobber(player, surface),
+	}
 	casts[player] = cast
 
 	local rod = Rods.ById[data.equippedRod] or Rods.ById[Rods.Default]
 	local weather = Events.GetWeather()
-	local wait = random:NextNumber(Config.BiteWaitMin, Config.BiteWaitMax) * rod.speed * (weather.biteMultiplier or 1)
+	local wait = random:NextNumber(Config.BiteWaitMin, Config.BiteWaitMax) * rod.speed * (weather.biteMultiplier or 1) * (bait.biteSpeed or 1)
 
-	task.delay(wait, function()
-		if casts[player] ~= cast or not player.Parent then
-			return
-		end
-		local latest = DataService.Get(player)
-		if not latest then
-			return
-		end
-		cast.catch = rollFish(latest, zoneId)
-		cast.phase = "bite"
-		cast.biteAt = os.clock()
-		if cast.bobber then
-			cast.bobber.Position -= Vector3.new(0, 0.4, 0)
-			cast.bobber.Color = Color3.fromRGB(255, 220, 0)
-		end
-		local rarity = Fish.RarityById[Fish.ById[cast.catch.id].rarity]
-		Remotes.Bite:FireClient(player, castId, {
-			rarity = rarity.id,
-			hits = rarity.hits,
-			speed = rarity.speed,
-			control = rod.control,
-		})
-
-		task.delay(Config.ReelWindow, function()
-			if casts[player] == cast then
-				clearCast(player)
-				Remotes.CatchResult:FireClient(player, castId, nil)
+	-- Fake nibbles to tempt an early strike
+	local nibbles = random:NextInteger(0, Config.NibblesMax)
+	for _ = 1, nibbles do
+		local at = random:NextNumber(0.8, math.max(0.9, wait - 0.7))
+		task.delay(at, function()
+			if casts[player] == cast and cast.phase == "waiting" then
+				dipBobber(cast, 0.35, 0.4)
+				Remotes.Nibble:FireClient(player, cast.id)
 			end
 		end)
-	end)
-	return true
+	end
+	task.delay(wait, onBite, player, cast)
+	return cast.id
 end
 
-local function onReel(player, castId, success)
+local function onHook(player, castId)
 	local cast = casts[player]
-	if not cast or cast.id ~= castId or cast.phase ~= "bite" then
+	if not cast or cast.id ~= castId then
+		return
+	end
+	if cast.phase == "waiting" then
+		lose(player, cast, "early")
+		return
+	end
+	if cast.phase ~= "bite" then
+		return
+	end
+	if os.clock() - cast.biteAt > cast.rarity.hookWindow + Config.HookGrace then
+		lose(player, cast, "stolen")
+		return
+	end
+
+	local data = DataService.Get(player)
+	local rod = data and Rods.ById[data.equippedRod] or Rods.ById[Rods.Default]
+	cast.phase = "fight"
+	cast.fightParams = Fight.Params(cast.rarity, rod)
+	cast.hookAt = os.clock()
+	Remotes.Fight:FireClient(player, cast.id, cast.fightParams)
+
+	task.delay(Fight.MaxSeconds + 5, function()
+		if casts[player] == cast then
+			lose(player, cast, "escaped")
+		end
+	end)
+end
+
+local function onReel(player, castId, outcome)
+	local cast = casts[player]
+	if not cast or cast.id ~= castId or cast.phase ~= "fight" then
+		return
+	end
+	if outcome ~= "caught" then
+		lose(player, cast, outcome == "snapped" and "snapped" or "escaped")
+		return
+	end
+	-- Nobody can land a fish faster than a perfect, non-stop reel
+	if os.clock() - cast.hookAt < Fight.MinSeconds(cast.fightParams) * 0.9 then
+		lose(player, cast, "escaped")
 		return
 	end
 	clearCast(player)
 
 	local fish = Fish.ById[cast.catch.id]
-	local rarity = Fish.RarityById[fish.rarity]
-	local tooFast = os.clock() - cast.biteAt < rarity.hits * SECONDS_PER_HIT
-	if success ~= true or tooFast then
-		Remotes.CatchResult:FireClient(player, castId, nil)
-		return
-	end
-
 	local caught = cast.catch
 	local isNew = DataService.Update(player, function(data)
+		caught.uid = data.nextUid
+		data.nextUid += 1
 		table.insert(data.bag, caught)
 		data.totalCaught += 1
 		local entry = data.book[caught.id]
@@ -317,7 +425,7 @@ local function onReel(player, castId, success)
 	local data = DataService.Get(player)
 	local runtime = DataService.GetRuntime(player)
 	if data and runtime and #data.bag >= runtime.bagSize and ShopService.HasPass(player, "AutoSell") then
-		EconomyService.SellAll(player)
+		EconomyService.SellAll(player, true)
 	end
 end
 
@@ -397,8 +505,9 @@ function FishingService.Start()
 	end)
 
 	Remotes.Cast.OnServerInvoke = function(player, target)
-		return onCast(player, target) == true
+		return onCast(player, target)
 	end
+	Remotes.Hook.OnServerEvent:Connect(onHook)
 	Remotes.Reel.OnServerEvent:Connect(onReel)
 	Remotes.CancelCast.OnServerEvent:Connect(function(player)
 		clearCast(player)

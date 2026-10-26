@@ -1,4 +1,4 @@
--- Connects the world to the game: market and rod shop prompts, zone gates,
+-- Connects the world to the game: shop and market prompts, zone gates,
 -- the global leaderboard board and the weekly event board.
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -25,16 +25,10 @@ local function hookPrompt(prompt)
 	end
 	local station = holder:GetAttribute("Station")
 	local gateZone = holder:GetAttribute("ZoneGate")
-	if station == "Sell" then
+	local panels = { Sell = "Market", Rods = "Rods", Bait = "Bait", Bounties = "Bounties" }
+	if station and panels[station] then
 		prompt.Triggered:Connect(function(player)
-			local ok, message = EconomyService.SellAll(player)
-			if not ok and message then
-				Remotes.Notify:FireClient(player, message, "warning")
-			end
-		end)
-	elseif station == "Rods" then
-		prompt.Triggered:Connect(function(player)
-			Remotes.OpenPanel:FireClient(player, "Rods")
+			Remotes.OpenPanel:FireClient(player, panels[station])
 		end)
 	elseif gateZone then
 		prompt.Triggered:Connect(function(player)

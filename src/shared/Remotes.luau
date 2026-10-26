@@ -9,14 +9,17 @@ local EVENTS = {
 	"Notify", -- server -> player: a toast message
 	"OpenPanel", -- server -> player: open a menu (e.g. the rod shop)
 	"CancelCast", -- player -> server: stop fishing
-	"Bite", -- server -> player: a fish bit, start the reel minigame
-	"Reel", -- player -> server: reel minigame result
-	"CatchResult", -- server -> player: what was caught (or that it escaped)
+	"Nibble", -- server -> player: a fish is nibbling (don't strike yet!)
+	"Bite", -- server -> player: the real bite, strike now
+	"Hook", -- player -> server: the player struck
+	"Fight", -- server -> player: the fish is hooked, start the reeling fight
+	"Reel", -- player -> server: how the fight ended
+	"CatchResult", -- server -> player: what was caught, or why it got away
 }
 
 local FUNCTIONS = {
 	"Action", -- player -> server: buy rod, unlock zone, rebirth, teleport, equip...
-	"Cast", -- player -> server: cast at a position, returns true if the bobber landed
+	"Cast", -- player -> server: cast at a position, returns the cast id if the bobber landed
 }
 
 local Remotes = {}

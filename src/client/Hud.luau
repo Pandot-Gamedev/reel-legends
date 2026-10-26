@@ -1,14 +1,18 @@
 -- Always-on screen info: coins, bag, the weekly event, and the menu buttons.
 
+local UserInputService = game:GetService("UserInputService")
+
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Zones = require(Shared.Zones)
 local Events = require(Shared.Events)
+local Bait = require(Shared.Bait)
 local Format = require(Shared.Format)
 
 local UI = require(script.Parent.UI)
 local State = require(script.Parent.State)
 local Panels = require(script.Parent.Panels)
+local CameraController = require(script.Parent.CameraController)
 local T = UI.Theme
 
 local Hud = {}
@@ -18,20 +22,24 @@ function Hud.Init(screenGui)
 	local stats = UI.new("Frame", {
 		Name = "Stats",
 		Position = UDim2.fromOffset(16, 16),
-		Size = UDim2.fromOffset(230, 104),
+		Size = UDim2.fromOffset(230, 126),
 		BackgroundColor3 = T.Background,
 		BackgroundTransparency = 0.15,
 		Parent = screenGui,
 	}, { UI.corner(12), UI.padding(10), UI.list(4) })
 	local coins = UI.label("0 coins", { Size = UDim2.new(1, 0, 0, 30), TextColor3 = T.Gold, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1, Parent = stats })
 	local bag = UI.label("Bag 0/20", { Size = UDim2.new(1, 0, 0, 22), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, Parent = stats })
-	local bonus = UI.label("", { Size = UDim2.new(1, 0, 0, 18), Font = T.BodyFont, TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 3, Parent = stats })
+	local baitLine = UI.label("Bait: Bread", { Size = UDim2.new(1, 0, 0, 18), Font = T.BodyFont, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 3, Parent = stats })
+	local bonus = UI.label("", { Size = UDim2.new(1, 0, 0, 18), Font = T.BodyFont, TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 4, Parent = stats })
 
 	local function update(data, runtime)
 		coins.Text = Format.Number(data.coins) .. " coins"
 		local size = runtime.bagSize or Config.BagSize
 		bag.Text = string.format("Bag %d/%d", #data.bag, size)
 		bag.TextColor3 = #data.bag >= size and T.Bad or T.Text
+		local bait = Bait.ById[data.bait.equipped] or Bait.ById[Bait.Default]
+		baitLine.Text = bait.free and "Bait: Bread" or string.format("Bait: %s x%d", bait.name, data.bait.owned[bait.id] or 0)
+		baitLine.TextColor3 = bait.color
 		if data.rebirths > 0 then
 			bonus.Text = string.format("Rebirth %d: +%d%% coins", data.rebirths, math.floor((Config.SellMultiplier(data.rebirths) - 1) * 100 + 0.5))
 		else
@@ -66,27 +74,47 @@ function Hud.Init(screenGui)
 		end
 	end)
 
-	-- Menu buttons, left side
+	-- Menu buttons, left side, with keyboard shortcuts
 	local menu = UI.new("Frame", {
 		Name = "Menu",
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 16, 0.5, 0),
-		Size = UDim2.fromOffset(120, 280),
+		Position = UDim2.new(0, 16, 0.5, 30),
+		Size = UDim2.fromOffset(130, 420),
 		BackgroundTransparency = 1,
 		Parent = screenGui,
-	}, { UI.list(8) })
+	}, { UI.list(6) })
 	local buttons = {
-		{ "Fish Book", "Book", Color3.fromRGB(80, 160, 255) },
-		{ "Rods", "Rods", Color3.fromRGB(230, 140, 60) },
-		{ "Shop", "Shop", Color3.fromRGB(70, 200, 110) },
-		{ "Travel", "Teleport", Color3.fromRGB(170, 100, 255) },
-		{ "Rebirth", "Rebirth", Color3.fromRGB(255, 90, 160) },
+		{ "Bag", "Bag", Color3.fromRGB(90, 140, 220), Enum.KeyCode.Q },
+		{ "Fish Book", "Book", Color3.fromRGB(80, 160, 255), Enum.KeyCode.B },
+		{ "Bounties", "Bounties", Color3.fromRGB(200, 150, 70), Enum.KeyCode.N },
+		{ "Rods", "Rods", Color3.fromRGB(230, 140, 60), Enum.KeyCode.R },
+		{ "Shop", "Shop", Color3.fromRGB(70, 200, 110), Enum.KeyCode.P },
+		{ "Travel", "Teleport", Color3.fromRGB(170, 100, 255), Enum.KeyCode.T },
+		{ "Rebirth", "Rebirth", Color3.fromRGB(255, 90, 160), nil },
 	}
+	local shortcuts = {}
 	for index, info in ipairs(buttons) do
-		UI.button(info[1], info[3], function()
+		local keyName = info[4] and (" (" .. info[4].Name .. ")") or ""
+		UI.button(info[1] .. keyName, info[3], function()
 			Panels[info[2]].toggle()
-		end, { Size = UDim2.fromOffset(120, 46), LayoutOrder = index, Parent = menu })
+		end, { Size = UDim2.fromOffset(130, 42), LayoutOrder = index, Parent = menu })
+		if info[4] then
+			shortcuts[info[4]] = info[2]
+		end
 	end
+	if CameraController.IsActive() then
+		UI.label("Alt: free the mouse", { Size = UDim2.fromOffset(130, 18), Font = T.BodyFont, TextColor3 = T.Muted, LayoutOrder = 99, Parent = menu })
+	end
+
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then
+			return
+		end
+		local panel = shortcuts[input.KeyCode]
+		if panel then
+			Panels[panel].toggle()
+		end
+	end)
 end
 
 return Hud

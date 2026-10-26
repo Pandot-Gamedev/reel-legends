@@ -1,4 +1,133 @@
-<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Item class="ReplicatedStorage" referent="RBX0000000A"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX00000009"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX00000001"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- General game settings. Change numbers here to rebalance the game.
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Item class="ReplicatedStorage" referent="RBX0000000E"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX0000000D"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX00000001"><Properties><string name="Name">Bait</string><ProtectedString name="Source"><![CDATA[-- Bait goes on the hook before each cast. A fish that bites eats it, whether
+-- you land the fish or not. Bait is bought with coins or made from fish you
+-- caught, never sold for Robux.
+--
+-- biteSpeed: multiplies the wait for a bite (lower is faster)
+-- luck: multiplies the chance of Rare and better fish
+-- legendary: multiplies the chance of Legendary and Mythic fish
+-- shiny: multiplies the chance of a Shiny fish
+-- price/buyAmount: coins for a pack at the Bait & Tackle shop (no price = can't buy)
+-- recipe: fish (by rarity) traded in to make craftAmount bait
+
+local Bait = {}
+
+Bait.List = {
+	{
+		id = "bread",
+		name = "Bread",
+		free = true,
+		color = Color3.fromRGB(230, 200, 140),
+		description = "Free and endless. No bonus.",
+	},
+	{
+		id = "worms",
+		name = "Worms",
+		price = 150,
+		buyAmount = 10,
+		biteSpeed = 0.7,
+		color = Color3.fromRGB(220, 120, 130),
+		description = "Fish bite 30% sooner.",
+	},
+	{
+		id = "shrimp",
+		name = "Shrimp",
+		price = 400,
+		buyAmount = 5,
+		luck = 1.35,
+		recipe = { { rarity = "Common", count = 3 } },
+		craftAmount = 2,
+		color = Color3.fromRGB(255, 150, 100),
+		description = "Rare and better fish 35% more likely.",
+	},
+	{
+		id = "glow_lure",
+		name = "Glow Lure",
+		luck = 1.7,
+		shiny = 2,
+		recipe = { { rarity = "Uncommon", count = 2 }, { rarity = "Rare", count = 1 } },
+		craftAmount = 3,
+		color = Color3.fromRGB(120, 255, 220),
+		description = "Rare+ fish 70% more likely, Shiny fish twice as likely. Craft only.",
+	},
+	{
+		id = "legend_chum",
+		name = "Legend Chum",
+		legendary = 2.5,
+		biteSpeed = 0.85,
+		recipe = { { rarity = "Rare", count = 3 }, { rarity = "Epic", count = 1 } },
+		craftAmount = 2,
+		color = Color3.fromRGB(255, 180, 40),
+		description = "Legendary and Mythic fish 2.5x as likely. Craft only.",
+	},
+}
+
+Bait.ById = {}
+for index, bait in ipairs(Bait.List) do
+	bait.order = index
+	Bait.ById[bait.id] = bait
+end
+
+Bait.Default = "bread"
+
+return Bait
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000002"><Properties><string name="Name">Bounties</string><ProtectedString name="Source"><![CDATA[-- Old Pete's daily bounties: three fish requests per player per day.
+-- Turning one in pays three times what the market would, plus bait.
+
+local Fish = require(script.Parent.Fish)
+local Zones = require(script.Parent.Zones)
+
+local Bounties = {}
+
+Bounties.RewardMultiplier = 3
+
+-- { rarity, count range, bait reward }
+local SLOTS = {
+	{ rarity = "Common", count = { 3, 5 }, bait = "worms", baitAmount = 5 },
+	{ rarity = "Uncommon", count = { 2, 3 }, bait = "shrimp", baitAmount = 3 },
+	{ rarity = "Rare", count = { 1, 1 }, bait = "glow_lure", baitAmount = 2 },
+}
+
+function Bounties.Today(now)
+	return math.floor(now / 86400)
+end
+
+-- Makes the day's bounties from the zones the player has unlocked
+function Bounties.Generate(userId, day, unlockedZones)
+	local random = Random.new(userId % 1000003 * 977 + day)
+	local list = {}
+	for _, slot in ipairs(SLOTS) do
+		local pool = {}
+		for _, zone in ipairs(Zones.List) do
+			if unlockedZones[zone.id] then
+				for _, fish in ipairs(Fish.ByZone[zone.id] or {}) do
+					if fish.rarity == slot.rarity then
+						table.insert(pool, fish)
+					end
+				end
+			end
+		end
+		if #pool > 0 then
+			local fish = pool[random:NextInteger(1, #pool)]
+			table.insert(list, {
+				fishId = fish.id,
+				count = random:NextInteger(slot.count[1], slot.count[2]),
+				bait = slot.bait,
+				baitAmount = slot.baitAmount,
+				done = false,
+			})
+		end
+	end
+	return list
+end
+
+-- Coins paid for a bounty
+function Bounties.Reward(bounty, sellMultiplier)
+	local fish = Fish.ById[bounty.fishId]
+	return math.floor(fish.value * bounty.count * Bounties.RewardMultiplier * sellMultiplier)
+end
+
+return Bounties
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000003"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- General game settings. Change numbers here to rebalance the game.
 
 local Config = {}
 
@@ -17,7 +146,8 @@ Config.BigBagSize = 60 -- with the Big Bag pass
 Config.MaxCastDistance = 80 -- studs from the player to the bobber
 Config.BiteWaitMin = 3.5 -- seconds, before rod speed bonus
 Config.BiteWaitMax = 8
-Config.ReelWindow = 15 -- seconds the player has to finish reeling after a bite
+Config.NibblesMax = 3 -- fake nibbles before the real bite (striking on one scares the fish)
+Config.HookGrace = 0.35 -- extra seconds allowed on the server for internet lag
 Config.CastCooldown = 1
 Config.ShinyChance = 1 / 100
 Config.ShinyValueMultiplier = 3
@@ -31,6 +161,10 @@ Config.RebirthRequiresZone = "frostbite"
 -- Daily login reward: DailyRewardBase * streak day (streak capped at 7)
 Config.DailyRewardBase = 100
 Config.DailyStreakCap = 7
+
+-- Fish Market
+Config.MarketSeconds = 30 * 60 -- how often the "in demand" fish change
+Config.StationRange = 25 -- how close you must be to the market / bait shop to use it
 
 -- Set to true to try every game pass for free while testing in Roblox Studio.
 -- Has no effect in the live game.
@@ -48,7 +182,7 @@ function Config.SellMultiplier(rebirths)
 end
 
 return Config
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000002"><Properties><string name="Name">Events</string><ProtectedString name="Source"><![CDATA[-- Weekly legendary fish and rotating weather. Both are worked out from the
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000004"><Properties><string name="Name">Events</string><ProtectedString name="Source"><![CDATA[-- Weekly legendary fish and rotating weather. Both are worked out from the
 -- clock, so every server (and every player's screen) agrees without talking.
 
 local Workspace = game:GetService("Workspace")
@@ -102,18 +236,112 @@ function Events.GetWeather(now)
 end
 
 return Events
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000003"><Properties><string name="Name">Fish</string><ProtectedString name="Source"><![CDATA[-- Every fish in the game. To add a fish, copy a line and give it a new unique id.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000005"><Properties><string name="Name">Fight</string><ProtectedString name="Source"><![CDATA[-- The reeling fight, shared by server and player so both agree on the rules.
+--
+-- Hold to reel: the catch bar fills, but line tension rises.
+-- Let go: tension drops, but the fish pulls the catch bar back.
+-- Every few seconds the fish thrashes (with a short warning first). Still reeling
+-- when it starts jolts the line, and reeling during a thrash barely helps.
+-- Catch bar full = caught. Tension full = line snaps. Catch bar empty = it got away.
+
+local Fight = {}
+
+Fight.StartProgress = 0.25
+Fight.TensionUp = 0.42 -- per second while reeling (before rod control)
+Fight.ThrashTension = 1.1 -- extra per second while reeling during a thrash, times strength
+Fight.ThrashJolt = 0.3 -- instant tension if you are still reeling when a thrash starts (weak fish jolt less)
+Fight.TensionDown = 0.7 -- per second while not reeling
+Fight.PullBack = 0.03 -- catch bar lost per second while not reeling, times strength
+Fight.ThrashPullBack = 0.07 -- same, during a thrash
+Fight.ThrashReelFactor = 0.3 -- reeling speed during a thrash
+Fight.WarningSeconds = 0.45
+Fight.MaxSeconds = 120
+
+function Fight.Params(rarity, rod)
+	local control = rod and rod.control or 0
+	return {
+		rarity = rarity.id,
+		strength = rarity.strength,
+		gain = rarity.reel * (1 + control * 2),
+		tensionUp = Fight.TensionUp * (1 - control),
+		calm = { 1.3 / math.sqrt(rarity.strength), 3.4 / math.sqrt(rarity.strength) },
+		thrash = { 0.6 * math.sqrt(rarity.strength), 1.3 * math.sqrt(rarity.strength) },
+	}
+end
+
+-- The quickest a perfect player could possibly land this fish
+function Fight.MinSeconds(params)
+	return (1 - Fight.StartProgress) / params.gain
+end
+
+-- Advance the fight by dt. state = { progress, tension, phase, phaseLeft, reeling }
+-- phase is "calm", "warning" or "thrash". random is a Random object.
+function Fight.Step(state, params, dt, random)
+	state.phaseLeft -= dt
+	if state.phaseLeft <= 0 then
+		if state.phase == "calm" then
+			state.phase = "warning"
+			state.phaseLeft = Fight.WarningSeconds
+		elseif state.phase == "warning" then
+			state.phase = "thrash"
+			state.phaseLeft = random:NextNumber(params.thrash[1], params.thrash[2])
+			if state.reeling then
+				state.tension += Fight.ThrashJolt * (params.strength - 0.4)
+			end
+		else
+			state.phase = "calm"
+			state.phaseLeft = random:NextNumber(params.calm[1], params.calm[2])
+		end
+	end
+
+	local thrashing = state.phase == "thrash"
+	if state.reeling then
+		local gain = params.gain * (thrashing and Fight.ThrashReelFactor or 1)
+		state.progress += gain * dt
+		state.tension += (params.tensionUp + (thrashing and Fight.ThrashTension * params.strength or 0)) * dt
+	else
+		local pull = thrashing and Fight.ThrashPullBack or Fight.PullBack
+		state.progress -= pull * params.strength * dt
+		state.tension -= Fight.TensionDown * dt
+	end
+	state.tension = math.max(0, state.tension)
+
+	if state.progress >= 1 then
+		return "caught"
+	elseif state.tension >= 1 then
+		return "snapped"
+	elseif state.progress <= 0 then
+		return "escaped"
+	end
+	return nil
+end
+
+function Fight.NewState(params, random)
+	return {
+		progress = Fight.StartProgress,
+		tension = 0,
+		phase = "calm",
+		phaseLeft = random:NextNumber(params.calm[1], params.calm[2]),
+		reeling = false,
+	}
+end
+
+return Fight
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000006"><Properties><string name="Name">Fish</string><ProtectedString name="Source"><![CDATA[-- Every fish in the game. To add a fish, copy a line and give it a new unique id.
 -- value = coins for an average-weight fish. weight = {min, max} in kg.
 
 local Fish = {}
 
+-- hookWindow: seconds to strike after the real bite
+-- reel: how fast the catch bar fills while reeling (per second)
+-- strength: how hard the fish fights (thrash length, line tension, pull-back)
 Fish.Rarities = {
-	{ id = "Common", weight = 60, color = Color3.fromRGB(200, 200, 200), hits = 1, speed = 0.9 },
-	{ id = "Uncommon", weight = 25, color = Color3.fromRGB(90, 200, 90), hits = 1, speed = 1.1 },
-	{ id = "Rare", weight = 10, color = Color3.fromRGB(70, 140, 255), hits = 2, speed = 1.3 },
-	{ id = "Epic", weight = 4, color = Color3.fromRGB(170, 80, 255), hits = 2, speed = 1.55 },
-	{ id = "Legendary", weight = 0.9, color = Color3.fromRGB(255, 170, 0), hits = 3, speed = 1.8 },
-	{ id = "Mythic", weight = 0.1, color = Color3.fromRGB(255, 60, 120), hits = 3, speed = 2.1 },
+	{ id = "Common", weight = 60, color = Color3.fromRGB(200, 200, 200), hookWindow = 1.0, reel = 0.3, strength = 0.8 },
+	{ id = "Uncommon", weight = 25, color = Color3.fromRGB(90, 200, 90), hookWindow = 0.9, reel = 0.24, strength = 1.0 },
+	{ id = "Rare", weight = 10, color = Color3.fromRGB(70, 140, 255), hookWindow = 0.8, reel = 0.19, strength = 1.25 },
+	{ id = "Epic", weight = 4, color = Color3.fromRGB(170, 80, 255), hookWindow = 0.7, reel = 0.15, strength = 1.5 },
+	{ id = "Legendary", weight = 0.9, color = Color3.fromRGB(255, 170, 0), hookWindow = 0.6, reel = 0.14, strength = 1.7 },
+	{ id = "Mythic", weight = 0.1, color = Color3.fromRGB(255, 60, 120), hookWindow = 0.55, reel = 0.12, strength = 1.95 },
 }
 
 Fish.RarityById = {}
@@ -191,7 +419,7 @@ for _, fish in ipairs(Fish.List) do
 end
 
 return Fish
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000004"><Properties><string name="Name">Format</string><ProtectedString name="Source"><![CDATA[-- Small helpers for showing numbers and times.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000007"><Properties><string name="Name">Format</string><ProtectedString name="Source"><![CDATA[-- Small helpers for showing numbers and times.
 
 local Format = {}
 
@@ -239,7 +467,51 @@ function Format.Weight(kg)
 end
 
 return Format
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000005"><Properties><string name="Name">Remotes</string><ProtectedString name="Source"><![CDATA[-- All the messages between server and players. The server creates them;
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000008"><Properties><string name="Name">Market</string><ProtectedString name="Source"><![CDATA[-- Fish Market prices. Every 30 minutes one fish per zone is "in demand" and
+-- sells for double, so holding on to the right fish can pay off.
+
+local Config = require(script.Parent.Config)
+local Fish = require(script.Parent.Fish)
+local Zones = require(script.Parent.Zones)
+local Events = require(script.Parent.Events)
+
+local Market = {}
+
+Market.HotMultiplier = 2
+
+-- Returns { [fishId] = true } for the fish in demand right now, and seconds left
+function Market.HotFish(now)
+	now = now or Events.Now()
+	local slot = math.floor(now / Config.MarketSeconds)
+	local secondsLeft = Config.MarketSeconds - (now % Config.MarketSeconds)
+	local random = Random.new(slot * 31 + 7)
+	local hot = {}
+	for _, zone in ipairs(Zones.List) do
+		local pool = {}
+		for _, fish in ipairs(Fish.ByZone[zone.id] or {}) do
+			if fish.rarity ~= "Common" then
+				table.insert(pool, fish)
+			end
+		end
+		if #pool > 0 then
+			hot[pool[random:NextInteger(1, #pool)].id] = true
+		end
+	end
+	return hot, secondsLeft
+end
+
+-- Coins for one fish from the bag, right now
+function Market.Price(entry, rebirths, hot)
+	hot = hot or Market.HotFish()
+	local price = entry.value * Config.SellMultiplier(rebirths)
+	if hot[entry.id] then
+		price *= Market.HotMultiplier
+	end
+	return math.floor(price)
+end
+
+return Market
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000009"><Properties><string name="Name">Remotes</string><ProtectedString name="Source"><![CDATA[-- All the messages between server and players. The server creates them;
 -- players wait for them to appear.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -250,14 +522,17 @@ local EVENTS = {
 	"Notify", -- server -> player: a toast message
 	"OpenPanel", -- server -> player: open a menu (e.g. the rod shop)
 	"CancelCast", -- player -> server: stop fishing
-	"Bite", -- server -> player: a fish bit, start the reel minigame
-	"Reel", -- player -> server: reel minigame result
-	"CatchResult", -- server -> player: what was caught (or that it escaped)
+	"Nibble", -- server -> player: a fish is nibbling (don't strike yet!)
+	"Bite", -- server -> player: the real bite, strike now
+	"Hook", -- player -> server: the player struck
+	"Fight", -- server -> player: the fish is hooked, start the reeling fight
+	"Reel", -- player -> server: how the fight ended
+	"CatchResult", -- server -> player: what was caught, or why it got away
 }
 
 local FUNCTIONS = {
 	"Action", -- player -> server: buy rod, unlock zone, rebirth, teleport, equip...
-	"Cast", -- player -> server: cast at a position, returns true if the bobber landed
+	"Cast", -- player -> server: cast at a position, returns the cast id if the bobber landed
 }
 
 local Remotes = {}
@@ -296,7 +571,7 @@ for _, name in ipairs(FUNCTIONS) do
 end
 
 return Remotes
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000006"><Properties><string name="Name">Rods</string><ProtectedString name="Source"><![CDATA[-- Rods are bought with in-game coins only (never Robux).
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000A"><Properties><string name="Name">Rods</string><ProtectedString name="Source"><![CDATA[-- Rods are bought with in-game coins only (never Robux).
 -- luck: multiplies the chance of Rare and better fish
 -- speed: multiplies the wait for a bite (lower is faster)
 -- control: makes the green reel zone wider
@@ -323,7 +598,7 @@ end
 Rods.Default = "twig"
 
 return Rods
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000007"><Properties><string name="Name">Shop</string><ProtectedString name="Source"><![CDATA[-- Everything sold for Robux. Nothing here changes which fish you catch or how
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000B"><Properties><string name="Name">Shop</string><ProtectedString name="Source"><![CDATA[-- Everything sold for Robux. Nothing here changes which fish you catch or how
 -- many coins you earn: only looks and time-savers.
 --
 -- HOW TO FILL IN THE IDS (see docs/SETUP_GUIDE.md, step 6):
@@ -385,7 +660,7 @@ for _, item in ipairs(Shop.EarnedTitles) do
 end
 
 return Shop
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000008"><Properties><string name="Name">Zones</string><ProtectedString name="Source"><![CDATA[-- Fishing zones. Zones are unlocked with in-game coins.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000C"><Properties><string name="Name">Zones</string><ProtectedString name="Source"><![CDATA[-- Fishing zones. Zones are unlocked with in-game coins.
 
 local Zones = {}
 
@@ -404,7 +679,7 @@ end
 Zones.Default = "shallows"
 
 return Zones
-]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX00000013"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000012"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[-- Reel Legends server. Starts every service in order.
+]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX00000017"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX00000016"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[-- Reel Legends server. Starts every service in order.
 
 local MapBuilder = require(script.MapBuilder)
 local DataService = require(script.DataService)
@@ -425,7 +700,7 @@ WorldService.Start()
 DataService.Start()
 
 print("[Reel Legends] Server ready")
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX0000000B"><Properties><string name="Name">CosmeticService</string><ProtectedString name="Source"><![CDATA[-- Shows cosmetics on characters: titles, trails, rod skins and VIP extras.
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">CosmeticService</string><ProtectedString name="Source"><![CDATA[-- Shows cosmetics on characters: titles, trails, rod skins and VIP extras.
 -- Also hands out free titles players earn by playing.
 
 local Players = game:GetService("Players")
@@ -639,7 +914,7 @@ function CosmeticService.Start()
 end
 
 return CosmeticService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000C"><Properties><string name="Name">DataService</string><ProtectedString name="Source"><![CDATA[-- Loads, saves and hands out each player's save data.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">DataService</string><ProtectedString name="Source"><![CDATA[-- Loads, saves and hands out each player's save data.
 -- Other scripts change data with DataService.Update(player, function(data) ... end)
 -- so the player's screen and leaderboard always refresh afterwards.
 
@@ -663,7 +938,13 @@ local function defaultData()
 		totalEarned = 0,
 		totalCaught = 0,
 		rebirths = 0,
-		bag = {}, -- { {id, weight, value, shiny} }
+		bag = {}, -- { {uid, id, weight, value, shiny, favorite} }
+		nextUid = 1,
+		bait = {
+			owned = {}, -- [baitId] = how many
+			equipped = "bread",
+		},
+		bounties = { day = 0, list = {} },
 		rodsOwned = { [Rods.Default] = true },
 		equippedRod = Rods.Default,
 		zones = { [Zones.Default] = true },
@@ -738,7 +1019,15 @@ local function loadData(player)
 		end)
 
 		if ok and not lockedElsewhere and result then
-			return reconcile(result.data or defaultData(), defaultData()), true
+			local data = reconcile(result.data or defaultData(), defaultData())
+			-- Saves from before fish had ids
+			for _, fish in ipairs(data.bag) do
+				if not fish.uid then
+					fish.uid = data.nextUid
+					data.nextUid += 1
+				end
+			end
+			return data, true
 		end
 
 		if not ok then
@@ -930,14 +1219,20 @@ function DataService.Start()
 end
 
 return DataService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000D"><Properties><string name="Name">EconomyService</string><ProtectedString name="Source"><![CDATA[-- Coins: selling fish, buying rods, unlocking zones, rebirths, daily rewards,
--- plus the menu buttons players press (all go through the "Action" remote).
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">EconomyService</string><ProtectedString name="Source"><![CDATA[-- Coins: the Fish Market, bait, bounties, rods, zones, rebirths and daily
+-- rewards, plus the menu buttons players press (all go through the "Action" remote).
+
+local Workspace = game:GetService("Workspace")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Config = require(Shared.Config)
+local Fish = require(Shared.Fish)
 local Rods = require(Shared.Rods)
 local Zones = require(Shared.Zones)
 local Shop = require(Shared.Shop)
+local Bait = require(Shared.Bait)
+local Market = require(Shared.Market)
+local Bounties = require(Shared.Bounties)
 local Format = require(Shared.Format)
 local Remotes = require(Shared.Remotes)
 
@@ -950,27 +1245,231 @@ local function notify(player, text, kind)
 	Remotes.Notify:FireClient(player, text, kind)
 end
 
-function EconomyService.SellAll(player)
+-- True if the player stands near a station (market, bait shop). Maps without
+-- that station don't require it.
+local function nearStation(player, station)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local found = false
+	for _, item in ipairs(Workspace:GetDescendants()) do
+		if item:IsA("BasePart") and item:GetAttribute("Station") == station then
+			found = true
+			if root and (item.Position - root.Position).Magnitude <= Config.StationRange then
+				return true
+			end
+		end
+	end
+	return not found
+end
+
+local function findInBag(data, uid)
+	for index, fish in ipairs(data.bag) do
+		if fish.uid == uid then
+			return index, fish
+		end
+	end
+	return nil
+end
+
+-- Sells every fish that isn't marked as a favorite.
+-- auto = true for the Auto Sell pass (works anywhere).
+function EconomyService.SellAll(player, auto)
 	local data = DataService.Get(player)
 	if not data then
 		return false, "Still loading"
 	end
-	if #data.bag == 0 then
-		return false, "Your bag is empty. Go catch some fish!"
+	if not auto and not nearStation(player, "Sell") then
+		return false, "Sell fish at the Fish Market"
 	end
-	local count = #data.bag
-	local earned = DataService.Update(player, function(saved)
-		local total = 0
+	local hot = Market.HotFish()
+	local count, earned = DataService.Update(player, function(saved)
+		local keep, total, sold = {}, 0, 0
 		for _, fish in ipairs(saved.bag) do
-			total += fish.value
+			if fish.favorite then
+				table.insert(keep, fish)
+			else
+				total += Market.Price(fish, saved.rebirths, hot)
+				sold += 1
+			end
 		end
-		total = math.floor(total * Config.SellMultiplier(saved.rebirths))
 		saved.coins += total
 		saved.totalEarned += total
-		saved.bag = {}
-		return total
+		saved.bag = keep
+		return sold, total
 	end)
+	if count == 0 then
+		return false, "Nothing to sell (favorites are never sold)"
+	end
 	notify(player, string.format("Sold %d fish for %s coins", count, Format.Number(earned)), "coins")
+	return true
+end
+
+function EconomyService.SellFish(player, uidText)
+	local data = DataService.Get(player)
+	local uid = tonumber(uidText)
+	if not data or not uid then
+		return false, "Unknown fish"
+	end
+	if not nearStation(player, "Sell") then
+		return false, "Sell fish at the Fish Market"
+	end
+	local index, fish = findInBag(data, uid)
+	if not index then
+		return false, "That fish is gone"
+	end
+	if fish.favorite then
+		return false, "Unfavorite it first"
+	end
+	local price = Market.Price(fish, data.rebirths)
+	DataService.Update(player, function(saved)
+		table.remove(saved.bag, index)
+		saved.coins += price
+		saved.totalEarned += price
+	end)
+	notify(player, string.format("Sold %s for %s coins", Fish.ById[fish.id].name, Format.Number(price)), "coins")
+	return true
+end
+
+function EconomyService.ToggleFavorite(player, uidText)
+	local data = DataService.Get(player)
+	local index = data and findInBag(data, tonumber(uidText))
+	if not index then
+		return false, "That fish is gone"
+	end
+	DataService.Update(player, function(saved)
+		saved.bag[index].favorite = not saved.bag[index].favorite or nil
+	end)
+	return true
+end
+
+function EconomyService.EquipBait(player, baitId)
+	local bait = Bait.ById[baitId]
+	local data = DataService.Get(player)
+	if not bait or not data then
+		return false, "Unknown bait"
+	end
+	if not bait.free and (data.bait.owned[bait.id] or 0) <= 0 then
+		return false, "You don't have any " .. bait.name
+	end
+	DataService.Update(player, function(saved)
+		saved.bait.equipped = bait.id
+	end)
+	return true
+end
+
+function EconomyService.BuyBait(player, baitId)
+	local bait = Bait.ById[baitId]
+	local data = DataService.Get(player)
+	if not bait or not data or not bait.price then
+		return false, "You can't buy that"
+	end
+	if not nearStation(player, "Bait") then
+		return false, "Buy bait at the Bait & Tackle shop"
+	end
+	if data.coins < bait.price then
+		return false, "Not enough coins"
+	end
+	DataService.Update(player, function(saved)
+		saved.coins -= bait.price
+		saved.bait.owned[bait.id] = (saved.bait.owned[bait.id] or 0) + bait.buyAmount
+	end)
+	notify(player, string.format("+%d %s", bait.buyAmount, bait.name), "success")
+	return true
+end
+
+-- Which bag fish a recipe would use: the cheapest non-favorite fish of each rarity
+local function pickIngredients(data, recipe)
+	local used = {}
+	for _, need in ipairs(recipe) do
+		local candidates = {}
+		for _, fish in ipairs(data.bag) do
+			if not fish.favorite and not used[fish.uid] and Fish.ById[fish.id].rarity == need.rarity then
+				table.insert(candidates, fish)
+			end
+		end
+		if #candidates < need.count then
+			return nil
+		end
+		table.sort(candidates, function(a, b)
+			return a.value < b.value
+		end)
+		for i = 1, need.count do
+			used[candidates[i].uid] = true
+		end
+	end
+	return used
+end
+EconomyService.PickIngredients = pickIngredients
+
+function EconomyService.CraftBait(player, baitId)
+	local bait = Bait.ById[baitId]
+	local data = DataService.Get(player)
+	if not bait or not data or not bait.recipe then
+		return false, "You can't make that"
+	end
+	if not nearStation(player, "Bait") then
+		return false, "Make bait at the Bait & Tackle shop"
+	end
+	local used = pickIngredients(data, bait.recipe)
+	if not used then
+		return false, "You don't have the fish for that (favorites are never used)"
+	end
+	DataService.Update(player, function(saved)
+		local keep = {}
+		for _, fish in ipairs(saved.bag) do
+			if not used[fish.uid] then
+				table.insert(keep, fish)
+			end
+		end
+		saved.bag = keep
+		saved.bait.owned[bait.id] = (saved.bait.owned[bait.id] or 0) + bait.craftAmount
+	end)
+	notify(player, string.format("Made %d %s", bait.craftAmount, bait.name), "success")
+	return true
+end
+
+-- Gives the player today's bounties if they don't have them yet
+local function refreshBounties(player, data)
+	local today = Bounties.Today(os.time())
+	if data.bounties.day ~= today then
+		data.bounties = { day = today, list = Bounties.Generate(player.UserId, today, data.zones) }
+		return true
+	end
+	return false
+end
+
+function EconomyService.ClaimBounty(player, indexText)
+	local data = DataService.Get(player)
+	local index = tonumber(indexText)
+	local bounty = data and index and data.bounties.list[index]
+	if not bounty or bounty.done then
+		return false, "That bounty is gone"
+	end
+	local chosen, found = {}, 0
+	for _, fish in ipairs(data.bag) do
+		if fish.id == bounty.fishId and not fish.favorite and found < bounty.count then
+			chosen[fish.uid] = true
+			found += 1
+		end
+	end
+	if found < bounty.count then
+		return false, string.format("You need %d %s (favorites don't count)", bounty.count, Fish.ById[bounty.fishId].name)
+	end
+	local reward = Bounties.Reward(bounty, Config.SellMultiplier(data.rebirths))
+	DataService.Update(player, function(saved)
+		local keep = {}
+		for _, fish in ipairs(saved.bag) do
+			if not chosen[fish.uid] then
+				table.insert(keep, fish)
+			end
+		end
+		saved.bag = keep
+		saved.coins += reward
+		saved.totalEarned += reward
+		saved.bait.owned[bounty.bait] = (saved.bait.owned[bounty.bait] or 0) + bounty.baitAmount
+		saved.bounties.list[index].done = true
+	end)
+	notify(player, string.format("Bounty done! +%s coins, +%d %s", Format.Number(reward), bounty.baitAmount, Bait.ById[bounty.bait].name), "coins")
 	return true
 end
 
@@ -1066,10 +1565,16 @@ function EconomyService.Rebirth(player)
 		return false, string.format("You need %s coins to rebirth", Format.Number(cost))
 	end
 	DataService.Update(player, function(saved)
-		-- Keep: fish book, cosmetics, titles, total stats. Reset: coins, rods, zones, bag.
+		-- Keep: fish book, favorite fish, bait, cosmetics, titles, stats. Reset: coins, rods, zones, other fish.
 		saved.rebirths += 1
 		saved.coins = 0
-		saved.bag = {}
+		local favorites = {}
+		for _, fish in ipairs(saved.bag) do
+			if fish.favorite then
+				table.insert(favorites, fish)
+			end
+		end
+		saved.bag = favorites
 		saved.rodsOwned = { [Rods.Default] = true }
 		saved.equippedRod = Rods.Default
 		saved.zones = { [Zones.Default] = true }
@@ -1118,6 +1623,15 @@ local function giveDailyReward(player, data)
 end
 
 local actions = {
+	SellAll = function(player)
+		return EconomyService.SellAll(player, false)
+	end,
+	SellFish = EconomyService.SellFish,
+	ToggleFavorite = EconomyService.ToggleFavorite,
+	EquipBait = EconomyService.EquipBait,
+	BuyBait = EconomyService.BuyBait,
+	CraftBait = EconomyService.CraftBait,
+	ClaimBounty = EconomyService.ClaimBounty,
 	BuyRod = EconomyService.BuyRod,
 	EquipRod = EconomyService.EquipRod,
 	UnlockZone = EconomyService.UnlockZone,
@@ -1129,6 +1643,22 @@ local actions = {
 function EconomyService.Start()
 	DataService.OnLoaded(function(player, data)
 		giveDailyReward(player, data)
+		refreshBounties(player, data)
+	end)
+
+	-- New bounties at midnight UTC for players who are online
+	task.spawn(function()
+		while true do
+			task.wait(60)
+			for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
+				local data = DataService.Get(player)
+				if data and data.bounties.day ~= Bounties.Today(os.time()) then
+					DataService.Update(player, function(saved)
+						refreshBounties(player, saved)
+					end)
+				end
+			end
+		end
 	end)
 
 	Remotes.Action.OnServerInvoke = function(player, actionName, argument)
@@ -1149,10 +1679,17 @@ function EconomyService.Start()
 end
 
 return EconomyService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000E"><Properties><string name="Name">FishingService</string><ProtectedString name="Source"><![CDATA[-- Casting, bites and catches. The server decides which fish bites, so players
--- can't pick their own fish. The reel minigame runs on the player's screen.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000012"><Properties><string name="Name">FishingService</string><ProtectedString name="Source"><![CDATA[-- Casting, nibbles, bites, hooking and catches. The server decides which fish
+-- bites and checks the timing, so players can't pick their own fish. The
+-- reeling fight runs on the player's screen using the shared Fight rules.
+--
+-- A cast goes: waiting (with fake nibbles) -> bite (strike now!) -> fight -> result
+--   strike during waiting  = "early": the fish is scared off (bait kept)
+--   no strike in time      = "stolen": the fish ate the bait
+--   fight lost             = "snapped" or "escaped"
 
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
@@ -1161,6 +1698,8 @@ local Fish = require(Shared.Fish)
 local Rods = require(Shared.Rods)
 local Zones = require(Shared.Zones)
 local Events = require(Shared.Events)
+local Bait = require(Shared.Bait)
+local Fight = require(Shared.Fight)
 local Remotes = require(Shared.Remotes)
 
 local DataService = require(script.Parent.DataService)
@@ -1171,7 +1710,6 @@ local CosmeticService = require(script.Parent.CosmeticService)
 local FishingService = {}
 
 local ROD_NAME = "Fishing Rod"
-local SECONDS_PER_HIT = 0.3 -- fastest a human can finish each reel hit
 
 local random = Random.new()
 local casts = {} -- [player] = current cast
@@ -1262,8 +1800,17 @@ local function makeBobber(player, position)
 	return bobber
 end
 
--- Pick which fish bites, using rod luck, weather and the weekly event
-local function rollFish(data, zoneId)
+-- The bait on the hook for this cast (falls back to bread when you run out)
+local function currentBait(data)
+	local bait = Bait.ById[data.bait.equipped]
+	if not bait or (not bait.free and (data.bait.owned[bait.id] or 0) <= 0) then
+		return Bait.ById[Bait.Default]
+	end
+	return bait
+end
+
+-- Pick which fish bites, using rod luck, bait, weather and the weekly event
+local function rollFish(data, zoneId, bait)
 	local rod = Rods.ById[data.equippedRod] or Rods.ById[Rods.Default]
 	local weather = Events.GetWeather()
 	local eventFish = Events.GetEventFish()
@@ -1280,10 +1827,10 @@ local function rollFish(data, zoneId)
 		if byRarity[rarity.id] then
 			local weight = rarity.weight
 			if rarity.order >= 3 then
-				weight *= rod.luck * (weather.luckMultiplier or 1)
+				weight *= rod.luck * (weather.luckMultiplier or 1) * (bait.luck or 1)
 			end
 			if rarity.order >= 5 then
-				weight *= weather.legendaryMultiplier or 1
+				weight *= (weather.legendaryMultiplier or 1) * (bait.legendary or 1)
 			end
 			total += weight
 			table.insert(choices, { rarity = rarity, weight = weight })
@@ -1311,7 +1858,8 @@ local function rollFish(data, zoneId)
 	-- Heavier fish are rarer and worth more
 	local roll = random:NextNumber() ^ 1.6
 	local weight = fish.weight[1] + (fish.weight[2] - fish.weight[1]) * roll
-	local shiny = random:NextNumber() < Config.ShinyChance * (weather.shinyMultiplier or 1)
+	local shinyChance = Config.ShinyChance * (weather.shinyMultiplier or 1) * (bait.shiny or 1)
+	local shiny = random:NextNumber() < shinyChance
 	local value = fish.value * (0.75 + 0.5 * roll)
 	if shiny then
 		value *= Config.ShinyValueMultiplier
@@ -1336,9 +1884,71 @@ local function announce(player, fish, caught)
 	end
 end
 
+-- Ends the cast without a catch and tells the player why
+local function lose(player, cast, reason)
+	if casts[player] == cast then
+		clearCast(player)
+	end
+	Remotes.CatchResult:FireClient(player, cast.id, nil, reason)
+end
+
+local function dipBobber(cast, depth, seconds)
+	local bobber = cast.bobber
+	if not bobber or not bobber.Parent then
+		return
+	end
+	local home = cast.surface
+	local down = TweenService:Create(bobber, TweenInfo.new(seconds / 2), { Position = home - Vector3.new(0, depth, 0) })
+	down:Play()
+	task.delay(seconds / 2, function()
+		if bobber.Parent and cast.phase == "waiting" then
+			TweenService:Create(bobber, TweenInfo.new(seconds / 2), { Position = home }):Play()
+		end
+	end)
+end
+
+local function onBite(player, cast)
+	if casts[player] ~= cast or not player.Parent then
+		return
+	end
+	local data = DataService.Get(player)
+	if not data then
+		return
+	end
+
+	-- The fish takes the bait now, whatever happens next
+	local bait = cast.bait
+	if not bait.free then
+		DataService.Update(player, function(saved)
+			local left = math.max(0, (saved.bait.owned[bait.id] or 0) - 1)
+			saved.bait.owned[bait.id] = left
+			if left == 0 and saved.bait.equipped == bait.id then
+				saved.bait.equipped = Bait.Default
+				Remotes.Notify:FireClient(player, "That was your last " .. bait.name .. ". Back to Bread.", "info")
+			end
+		end)
+	end
+
+	cast.catch = rollFish(data, cast.zone, bait)
+	cast.rarity = Fish.RarityById[Fish.ById[cast.catch.id].rarity]
+	cast.phase = "bite"
+	cast.biteAt = os.clock()
+	if cast.bobber then
+		cast.bobber.Position = cast.surface - Vector3.new(0, 1.2, 0)
+		cast.bobber.Color = Color3.fromRGB(255, 220, 0)
+	end
+	Remotes.Bite:FireClient(player, cast.id, { window = cast.rarity.hookWindow })
+
+	task.delay(cast.rarity.hookWindow + Config.HookGrace, function()
+		if casts[player] == cast and cast.phase == "bite" then
+			lose(player, cast, "stolen")
+		end
+	end)
+end
+
 local function onCast(player, target)
 	if typeof(target) ~= "Vector3" then
-		return
+		return nil
 	end
 	local data = DataService.Get(player)
 	local runtime = DataService.GetRuntime(player)
@@ -1346,100 +1956,128 @@ local function onCast(player, target)
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not data or not root or not humanoid or humanoid.Health <= 0 or not character:FindFirstChild(ROD_NAME) then
-		return
+		return nil
+	end
+	if casts[player] then
+		return nil
 	end
 	if lastCast[player] and os.clock() - lastCast[player] < Config.CastCooldown then
-		return
+		return nil
 	end
 
 	if #data.bag >= runtime.bagSize then
 		if ShopService.HasPass(player, "AutoSell") then
-			EconomyService.SellAll(player)
-		else
-			Remotes.Notify:FireClient(player, "Your bag is full! Sell your fish at the Fish Market.", "warning")
-			return
+			EconomyService.SellAll(player, true)
+		end
+		data = DataService.Get(player)
+		if #data.bag >= runtime.bagSize then
+			Remotes.Notify:FireClient(player, "Your bag is full! Sell fish at the Fish Market.", "warning")
+			return nil
 		end
 	end
 
 	local flat = Vector3.new(target.X - root.Position.X, 0, target.Z - root.Position.Z)
 	if flat.Magnitude > Config.MaxCastDistance then
 		Remotes.Notify:FireClient(player, "That's too far. Get closer to the water.", "warning")
-		return
+		return nil
 	end
 
 	local zoneId = zoneAt(target)
 	if not zoneId or isOverLand(target, character) then
 		Remotes.Notify:FireClient(player, "Cast into the water to fish.", "warning")
-		return
+		return nil
 	end
 	if not data.zones[zoneId] then
 		local zone = Zones.ById[zoneId]
 		Remotes.Notify:FireClient(player, "Unlock " .. (zone and zone.name or zoneId) .. " to fish here.", "warning")
-		return
+		return nil
 	end
 
-	clearCast(player)
 	lastCast[player] = os.clock()
 	nextCastId += 1
-	local castId = nextCastId
 	local surface = Vector3.new(target.X, 0.3, target.Z)
-	local cast = { id = castId, zone = zoneId, phase = "waiting", bobber = makeBobber(player, surface) }
+	local bait = currentBait(data)
+	local cast = {
+		id = nextCastId,
+		zone = zoneId,
+		phase = "waiting",
+		surface = surface,
+		bait = bait,
+		bobber = makeBobber(player, surface),
+	}
 	casts[player] = cast
 
 	local rod = Rods.ById[data.equippedRod] or Rods.ById[Rods.Default]
 	local weather = Events.GetWeather()
-	local wait = random:NextNumber(Config.BiteWaitMin, Config.BiteWaitMax) * rod.speed * (weather.biteMultiplier or 1)
+	local wait = random:NextNumber(Config.BiteWaitMin, Config.BiteWaitMax) * rod.speed * (weather.biteMultiplier or 1) * (bait.biteSpeed or 1)
 
-	task.delay(wait, function()
-		if casts[player] ~= cast or not player.Parent then
-			return
-		end
-		local latest = DataService.Get(player)
-		if not latest then
-			return
-		end
-		cast.catch = rollFish(latest, zoneId)
-		cast.phase = "bite"
-		cast.biteAt = os.clock()
-		if cast.bobber then
-			cast.bobber.Position -= Vector3.new(0, 0.4, 0)
-			cast.bobber.Color = Color3.fromRGB(255, 220, 0)
-		end
-		local rarity = Fish.RarityById[Fish.ById[cast.catch.id].rarity]
-		Remotes.Bite:FireClient(player, castId, {
-			rarity = rarity.id,
-			hits = rarity.hits,
-			speed = rarity.speed,
-			control = rod.control,
-		})
-
-		task.delay(Config.ReelWindow, function()
-			if casts[player] == cast then
-				clearCast(player)
-				Remotes.CatchResult:FireClient(player, castId, nil)
+	-- Fake nibbles to tempt an early strike
+	local nibbles = random:NextInteger(0, Config.NibblesMax)
+	for _ = 1, nibbles do
+		local at = random:NextNumber(0.8, math.max(0.9, wait - 0.7))
+		task.delay(at, function()
+			if casts[player] == cast and cast.phase == "waiting" then
+				dipBobber(cast, 0.35, 0.4)
+				Remotes.Nibble:FireClient(player, cast.id)
 			end
 		end)
-	end)
-	return true
+	end
+	task.delay(wait, onBite, player, cast)
+	return cast.id
 end
 
-local function onReel(player, castId, success)
+local function onHook(player, castId)
 	local cast = casts[player]
-	if not cast or cast.id ~= castId or cast.phase ~= "bite" then
+	if not cast or cast.id ~= castId then
+		return
+	end
+	if cast.phase == "waiting" then
+		lose(player, cast, "early")
+		return
+	end
+	if cast.phase ~= "bite" then
+		return
+	end
+	if os.clock() - cast.biteAt > cast.rarity.hookWindow + Config.HookGrace then
+		lose(player, cast, "stolen")
+		return
+	end
+
+	local data = DataService.Get(player)
+	local rod = data and Rods.ById[data.equippedRod] or Rods.ById[Rods.Default]
+	cast.phase = "fight"
+	cast.fightParams = Fight.Params(cast.rarity, rod)
+	cast.hookAt = os.clock()
+	Remotes.Fight:FireClient(player, cast.id, cast.fightParams)
+
+	task.delay(Fight.MaxSeconds + 5, function()
+		if casts[player] == cast then
+			lose(player, cast, "escaped")
+		end
+	end)
+end
+
+local function onReel(player, castId, outcome)
+	local cast = casts[player]
+	if not cast or cast.id ~= castId or cast.phase ~= "fight" then
+		return
+	end
+	if outcome ~= "caught" then
+		lose(player, cast, outcome == "snapped" and "snapped" or "escaped")
+		return
+	end
+	-- Nobody can land a fish faster than a perfect, non-stop reel
+	if os.clock() - cast.hookAt < Fight.MinSeconds(cast.fightParams) * 0.9 then
+		lose(player, cast, "escaped")
 		return
 	end
 	clearCast(player)
 
 	local fish = Fish.ById[cast.catch.id]
-	local rarity = Fish.RarityById[fish.rarity]
-	local tooFast = os.clock() - cast.biteAt < rarity.hits * SECONDS_PER_HIT
-	if success ~= true or tooFast then
-		Remotes.CatchResult:FireClient(player, castId, nil)
-		return
-	end
-
 	local caught = cast.catch
 	local isNew = DataService.Update(player, function(data)
+		caught.uid = data.nextUid
+		data.nextUid += 1
 		table.insert(data.bag, caught)
 		data.totalCaught += 1
 		local entry = data.book[caught.id]
@@ -1468,7 +2106,7 @@ local function onReel(player, castId, success)
 	local data = DataService.Get(player)
 	local runtime = DataService.GetRuntime(player)
 	if data and runtime and #data.bag >= runtime.bagSize and ShopService.HasPass(player, "AutoSell") then
-		EconomyService.SellAll(player)
+		EconomyService.SellAll(player, true)
 	end
 end
 
@@ -1548,8 +2186,9 @@ function FishingService.Start()
 	end)
 
 	Remotes.Cast.OnServerInvoke = function(player, target)
-		return onCast(player, target) == true
+		return onCast(player, target)
 	end
+	Remotes.Hook.OnServerEvent:Connect(onHook)
 	Remotes.Reel.OnServerEvent:Connect(onReel)
 	Remotes.CancelCast.OnServerEvent:Connect(function(player)
 		clearCast(player)
@@ -1585,14 +2224,14 @@ function FishingService.Start()
 end
 
 return FishingService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- Builds a simple starter world (hub island + 3 fishing islands) when the place
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000013"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- Builds a simple starter world (hub island + 3 fishing islands) when the place
 -- has no folder called "Map" in Workspace. That means the game is playable the
 -- moment you press Play. To use your own scenery later, see docs/SETUP_GUIDE.md:
 -- the game only cares about parts with these attributes:
 --   FishingZone = "shallows"   invisible flat part on the water surface
 --   ZoneGate    = "mangroves"  wall that blocks a locked zone
 --   ZoneSpawn   = "frostbite"  where the teleporter drops players
---   Station     = "Sell" / "Rods" / "Leaderboard" / "EventBoard"
+--   Station     = "Sell" / "Rods" / "Bait" / "Bounties" / "Leaderboard" / "EventBoard"
 --   VipDoor     = true         door only VIP players can walk through
 
 local Workspace = game:GetService("Workspace")
@@ -1786,11 +2425,22 @@ function MapBuilder.Build()
 
 	local sellCounter = stall(scenery, "FishMarket", Vector3.new(-35, GROUND_Y, -25), Color3.fromRGB(60, 140, 220), "FISH MARKET")
 	sellCounter:SetAttribute("Station", "Sell")
-	prompt(sellCounter, "Sell all fish", "Fish Market")
+	prompt(sellCounter, "Sell fish", "Fish Market")
 
 	local rodCounter = stall(scenery, "RodShop", Vector3.new(35, GROUND_Y, -25), Color3.fromRGB(220, 120, 50), "ROD SHOP")
 	rodCounter:SetAttribute("Station", "Rods")
 	prompt(rodCounter, "Browse rods", "Rod Shop")
+
+	local baitCounter = stall(scenery, "BaitShop", Vector3.new(35, GROUND_Y, 8), Color3.fromRGB(120, 190, 80), "BAIT & TACKLE")
+	baitCounter:SetAttribute("Station", "Bait")
+	prompt(baitCounter, "Buy & make bait", "Bait & Tackle")
+
+	local bountyBoard = board(map, "BountyBoard", CFrame.new(-30, GROUND_Y + 6, 48), Vector3.new(14, 10, 1), "Bounties")
+	bountyBoard.Color = Color3.fromRGB(120, 85, 55)
+	bountyBoard.Material = Enum.Material.WoodPlanks
+	sign(bountyBoard, "OLD PETE'S\nBOUNTIES", Enum.NormalId.Front, Color3.fromRGB(255, 230, 160))
+	sign(bountyBoard, "OLD PETE'S\nBOUNTIES", Enum.NormalId.Back, Color3.fromRGB(255, 230, 160))
+	prompt(bountyBoard, "Check bounties", "Bounty Board")
 
 	board(map, "GlobalBoard", CFrame.new(0, GROUND_Y + 10, -60), Vector3.new(28, 18, 1), "Leaderboard")
 	board(map, "EventBoard", CFrame.new(-55, GROUND_Y + 7, 25) * CFrame.Angles(0, math.rad(90), 0), Vector3.new(20, 12, 1), "EventBoard")
@@ -1905,7 +2555,7 @@ function MapBuilder.Build()
 end
 
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">ShopService</string><ProtectedString name="Source"><![CDATA[-- Robux purchases: game passes (VIP, Auto Sell, Big Bag, Teleporter) and
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">ShopService</string><ProtectedString name="Source"><![CDATA[-- Robux purchases: game passes (VIP, Auto Sell, Big Bag, Teleporter) and
 -- cosmetic developer products.
 
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -2003,7 +2653,7 @@ function ShopService.Start()
 end
 
 return ShopService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">WorldService</string><ProtectedString name="Source"><![CDATA[-- Connects the world to the game: market and rod shop prompts, zone gates,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000015"><Properties><string name="Name">WorldService</string><ProtectedString name="Source"><![CDATA[-- Connects the world to the game: shop and market prompts, zone gates,
 -- the global leaderboard board and the weekly event board.
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -2030,16 +2680,10 @@ local function hookPrompt(prompt)
 	end
 	local station = holder:GetAttribute("Station")
 	local gateZone = holder:GetAttribute("ZoneGate")
-	if station == "Sell" then
+	local panels = { Sell = "Market", Rods = "Rods", Bait = "Bait", Bounties = "Bounties" }
+	if station and panels[station] then
 		prompt.Triggered:Connect(function(player)
-			local ok, message = EconomyService.SellAll(player)
-			if not ok and message then
-				Remotes.Notify:FireClient(player, message, "warning")
-			end
-		end)
-	elseif station == "Rods" then
-		prompt.Triggered:Connect(function(player)
-			Remotes.OpenPanel:FireClient(player, "Rods")
+			Remotes.OpenPanel:FireClient(player, panels[station])
 		end)
 	elseif gateZone then
 		prompt.Triggered:Connect(function(player)
@@ -2180,13 +2824,14 @@ function WorldService.Start()
 end
 
 return WorldService
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX0000001D"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000001C"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX0000001B"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[-- Reel Legends player script. Builds the screen and starts fishing controls.
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX00000022"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000021"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000020"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[-- Reel Legends player script. Builds the screen and starts fishing controls.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
 local UI = require(script.UI)
 local Notifications = require(script.Notifications)
+local CameraController = require(script.CameraController)
 local Panels = require(script.Panels)
 local Hud = require(script.Hud)
 local Fishing = require(script.Fishing)
@@ -2226,54 +2871,268 @@ local fishingGui = UI.new("ScreenGui", {
 })
 
 Notifications.Init(screenGui)
+CameraController.Init(fishingGui)
 Panels.Init(screenGui)
 Hud.Init(screenGui)
 Fishing.Init(fishingGui)
 World.Init()
 
-Notifications.Show("Equip your rod (press 1) and click the water to fish!", "info")
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">Fishing</string><ProtectedString name="Source"><![CDATA[-- Casting and the reel minigame on the player's screen.
--- Equip the rod, click (or tap) the water, wait for the bite, then tap when the
--- moving needle is inside the green zone.
+Notifications.Show("Press 1 for your rod, aim at the water and click to cast!", "info")
+Notifications.Show("Don't strike at nibbles. Click fast when you see the big \"!\"", "info")
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">CameraController</string><ProtectedString name="Source"><![CDATA[-- Over-the-shoulder camera for mouse players: moving the mouse turns the camera
+-- and your character, like most action games. The mouse is free again whenever
+-- a menu is open, or when you press Alt (press again to lock it).
+-- Phones and tablets keep Roblox's normal touch camera.
 
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local UI = require(script.Parent.UI)
+
+local CameraController = {}
+
+local SENSITIVITY = 0.0035 -- radians per pixel of mouse movement
+local GAMEPAD_SPEED = 3 -- radians per second at full stick
+local SHOULDER = Vector3.new(1.6, 0.9, 0) -- camera sits over the right shoulder
+local MIN_PITCH, MAX_PITCH = math.rad(-75), math.rad(60)
+local MIN_ZOOM, MAX_ZOOM = 5, 28
+
+local player = Players.LocalPlayer
+local enabled = false
+local cursorFree = false
+local yaw, pitch, zoom = 0, math.rad(-15), 12
+local stick = Vector2.zero
+local shakeUntil, shakeAmount = 0, 0
+local crosshair
+
+function CameraController.IsActive()
+	return enabled
+end
+
+function CameraController.IsLocked()
+	return enabled and not cursorFree and not UI.IsWindowOpen()
+end
+
+-- Shake the camera (used when a fish thrashes)
+function CameraController.Shake(amount, seconds)
+	shakeAmount = math.max(shakeAmount, amount)
+	shakeUntil = math.max(shakeUntil, os.clock() + seconds)
+end
+
+-- The ray the player is aiming along: screen center when locked, else the mouse
+function CameraController.AimRay()
+	local camera = Workspace.CurrentCamera
+	if CameraController.IsLocked() then
+		local size = camera.ViewportSize
+		return camera:ViewportPointToRay(size.X / 2, size.Y / 2)
+	end
+	local mouse = UserInputService:GetMouseLocation()
+	return camera:ViewportPointToRay(mouse.X, mouse.Y)
+end
+
+local function update(dt)
+	local camera = Workspace.CurrentCamera
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not camera or not root or not humanoid then
+		return
+	end
+
+	local locked = CameraController.IsLocked()
+	UserInputService.MouseBehavior = locked and Enum.MouseBehavior.LockCenter or Enum.MouseBehavior.Default
+	UserInputService.MouseIconEnabled = not locked
+	crosshair.Visible = locked
+
+	if stick.Magnitude > 0.15 then
+		yaw -= stick.X * GAMEPAD_SPEED * dt
+		pitch = math.clamp(pitch + stick.Y * GAMEPAD_SPEED * dt, MIN_PITCH, MAX_PITCH)
+	end
+
+	-- Character faces where the camera looks
+	if humanoid.Health > 0 and not humanoid.Sit then
+		humanoid.AutoRotate = false
+		root.CFrame = CFrame.new(root.Position) * CFrame.Angles(0, yaw, 0)
+	end
+
+	camera.CameraType = Enum.CameraType.Scriptable
+	local rotation = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitch, 0, 0)
+	local focus = root.Position + Vector3.new(0, 1.5, 0)
+	local offset = rotation:VectorToWorldSpace(SHOULDER + Vector3.new(0, 0, zoom))
+
+	-- Don't let the camera go through walls
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character }
+	params.IgnoreWater = true
+	local position = focus + offset
+	local hit = Workspace:Raycast(focus, offset, params)
+	if hit then
+		position = hit.Position - offset.Unit * 0.5
+	end
+
+	local shake = CFrame.new()
+	if os.clock() < shakeUntil then
+		local s = shakeAmount
+		shake = CFrame.Angles(math.rad((math.random() - 0.5) * s), math.rad((math.random() - 0.5) * s), 0)
+	else
+		shakeAmount = 0
+	end
+	camera.CFrame = CFrame.new(position) * rotation * shake
+	camera.Focus = CFrame.new(focus)
+end
+
+function CameraController.Init(screenGui)
+	-- Touch-only devices keep the normal camera
+	if not UserInputService.MouseEnabled then
+		return
+	end
+	enabled = true
+
+	crosshair = UI.new("Frame", {
+		Name = "Crosshair",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(8, 8),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundTransparency = 0.2,
+		Visible = false,
+		Parent = screenGui,
+	}, { UI.corner(4), UI.stroke(Color3.new(0, 0, 0), 1) })
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement and CameraController.IsLocked() then
+			yaw -= input.Delta.X * SENSITIVITY
+			pitch = math.clamp(pitch - input.Delta.Y * SENSITIVITY, MIN_PITCH, MAX_PITCH)
+		elseif input.UserInputType == Enum.UserInputType.MouseWheel and not UI.IsWindowOpen() then
+			zoom = math.clamp(zoom - input.Position.Z * 2, MIN_ZOOM, MAX_ZOOM)
+		elseif input.KeyCode == Enum.KeyCode.Thumbstick2 then
+			stick = Vector2.new(input.Position.X, input.Position.Y)
+		end
+	end)
+
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.LeftAlt or input.KeyCode == Enum.KeyCode.RightAlt then
+			cursorFree = not cursorFree
+		end
+	end)
+
+	local function onCharacter(character)
+		local root = character:WaitForChild("HumanoidRootPart", 10)
+		if root then
+			local look = root.CFrame.LookVector
+			yaw = math.atan2(-look.X, -look.Z)
+		end
+	end
+	if player.Character then
+		task.spawn(onCharacter, player.Character)
+	end
+	player.CharacterAdded:Connect(onCharacter)
+
+	RunService:BindToRenderStep("ReelShoulderCamera", Enum.RenderPriority.Camera.Value + 1, update)
+end
+
+return CameraController
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">Fishing</string><ProtectedString name="Source"><![CDATA[-- Fishing on the player's screen.
+--   1. Equip the rod and click the water to cast.
+--   2. Watch the bobber. Little nibbles are fish testing the bait: don't strike!
+--   3. When it plunges and "!" appears, click fast to strike, or the fish
+--      steals your bait.
+--   4. The fight: hold to reel. Watch the tension so the line doesn't snap, and
+--      let go when the fish thrashes. Don't let go for too long or it swims off.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Fish = require(Shared.Fish)
+local Fight = require(Shared.Fight)
 local Format = require(Shared.Format)
 local Remotes = require(Shared.Remotes)
 
 local UI = require(script.Parent.UI)
 local Notifications = require(script.Parent.Notifications)
+local CameraController = require(script.Parent.CameraController)
 local T = UI.Theme
 
 local Fishing = {}
 
 local ROD_NAME = "Fishing Rod"
-local BITE_TIMEOUT = 25 -- give up waiting if the server never sends a bite
-local MINIGAME_SECONDS = 10
+local WAIT_TIMEOUT = 30 -- give up if the server never answers
+
+local MESSAGES = {
+	early = "Too soon! You struck at a nibble and scared the fish away.",
+	stolen = "Too slow! The fish stole your bait.",
+	snapped = "SNAP! The line broke. Let go when the tension bar goes red.",
+	escaped = "It got away! Don't let go for too long.",
+}
 
 local player = Players.LocalPlayer
-local mouse = player:GetMouse()
 local screenGui
 local statusLabel
+local alertLabel
 
-local phase = "idle" -- idle, waiting, reeling
-local waitToken = 0
+local phase = "idle" -- idle, casting, waiting, bite, fight, done
+local castId = nil
+local token = 0
+
+local sounds = {}
+local function sound(name, id, volume)
+	local s = Instance.new("Sound")
+	s.Name = "Reel" .. name
+	s.SoundId = id
+	s.Volume = volume or 0.6
+	s.Parent = SoundService
+	sounds[name] = s
+end
+local function play(name, pitch)
+	local s = sounds[name]
+	if s then
+		s.PlaybackSpeed = pitch or 1
+		SoundService:PlayLocalSound(s)
+	end
+end
 
 local function setStatus(text)
 	statusLabel.Text = text or ""
 	statusLabel.Visible = text ~= nil
 end
 
+local function flashAlert(text, color, seconds)
+	alertLabel.Text = text
+	alertLabel.TextColor3 = color
+	alertLabel.Visible = true
+	alertLabel.Size = UDim2.fromOffset(160, 160)
+	TweenService:Create(alertLabel, TweenInfo.new(0.15, Enum.EasingStyle.Back), { Size = UDim2.fromOffset(220, 220) }):Play()
+	local mine = os.clock()
+	alertLabel:SetAttribute("Shown", mine)
+	task.delay(seconds, function()
+		if alertLabel:GetAttribute("Shown") == mine then
+			alertLabel.Visible = false
+		end
+	end)
+end
+
 local function reset()
 	phase = "idle"
-	waitToken += 1
+	castId = nil
+	token += 1
 	setStatus(nil)
+	alertLabel.Visible = false
+end
+
+local function fishingLine()
+	local bobber = Workspace:FindFirstChild(player.Name .. "Bobber")
+	return bobber and bobber:FindFirstChildOfClass("Beam")
 end
 
 local function isWater(result)
@@ -2286,7 +3145,7 @@ local function isWater(result)
 	return result.Instance:GetAttribute("FishingZone") ~= nil
 end
 
--- Where the bobber should land: where the player clicked if that is water,
+-- Where the bobber should land: where the player aims if that is water,
 -- otherwise a spot in front of them.
 local function castTarget(root)
 	local params = RaycastParams.new()
@@ -2294,7 +3153,12 @@ local function castTarget(root)
 	params.FilterDescendantsInstances = { player.Character }
 	params.IgnoreWater = false
 
-	local ray = mouse.UnitRay
+	local ray
+	if CameraController.IsActive() then
+		ray = CameraController.AimRay()
+	else
+		ray = player:GetMouse().UnitRay
+	end
 	local hit = Workspace:Raycast(ray.Origin, ray.Direction * 300, params)
 	if isWater(hit) then
 		return hit.Position
@@ -2306,44 +3170,49 @@ local function castTarget(root)
 end
 
 local function cast()
-	if phase == "reeling" then
-		return
-	end
-	if phase == "waiting" then
-		-- Clicking again reels the line back in
-		Remotes.CancelCast:FireServer()
-		reset()
-		return
-	end
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if not root then
 		return
 	end
-
-	local ok, landed = pcall(function()
+	phase = "casting"
+	local ok, id = pcall(function()
 		return Remotes.Cast:InvokeServer(castTarget(root))
 	end)
-	if not ok or not landed then
+	if not ok or not id then
+		reset()
 		return
 	end
-
 	phase = "waiting"
-	waitToken += 1
-	local token = waitToken
-	setStatus("Waiting for a bite...  (click again to reel in)")
-	task.delay(BITE_TIMEOUT, function()
-		if waitToken == token and phase == "waiting" then
+	castId = id
+	play("splash", 1.2)
+	setStatus("Wait for the bite (!)... don't strike at nibbles")
+	token += 1
+	local mine = token
+	task.delay(WAIT_TIMEOUT, function()
+		if token == mine and (phase == "waiting" or phase == "bite") then
 			reset()
 		end
 	end)
+end
+
+-- Click / tap with the rod out
+local function onActivated()
+	if phase == "idle" then
+		cast()
+	elseif phase == "waiting" or phase == "bite" then
+		Remotes.Hook:FireServer(castId)
+		if phase == "bite" then
+			setStatus("Hooked...")
+		end
+	end
 end
 
 local hookedTools = setmetatable({}, { __mode = "k" })
 local function hookTool(tool)
 	if not hookedTools[tool] then
 		hookedTools[tool] = true
-		tool.Activated:Connect(cast)
+		tool.Activated:Connect(onActivated)
 	end
 end
 
@@ -2355,122 +3224,176 @@ local function watchCharacter(character)
 		end
 	end)
 	character.ChildRemoved:Connect(function(child)
-		if child:IsA("Tool") and child.Name == ROD_NAME and phase ~= "idle" then
+		if child:IsA("Tool") and child.Name == ROD_NAME and (phase == "waiting" or phase == "bite") then
 			Remotes.CancelCast:FireServer()
 			reset()
 		end
 	end)
 end
 
--- The reel minigame. Calls done(true) if the player lands every hit.
-local function playMinigame(info, done)
-	local hitsNeeded = info.hits or 1
-	local speed = (info.speed or 1) * 0.65 -- bar widths per second
-	local zoneWidth = math.clamp(0.22 + (info.control or 0) - (hitsNeeded - 1) * 0.03, 0.08, 0.5)
-	local rarity = Fish.RarityById[info.rarity]
+------------------------------------------------------------------ The fight
 
-	local overlay = UI.new("TextButton", {
-		Name = "ReelOverlay",
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		Text = "",
-		ZIndex = 20,
-		Parent = screenGui,
-	})
-	local box = UI.new("Frame", {
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -110),
-		Size = UDim2.fromOffset(440, 120),
-		BackgroundColor3 = T.Background,
-		ZIndex = 21,
-		Parent = overlay,
-	}, { UI.corner(14), UI.stroke(rarity and rarity.color or T.Accent, 3) })
-	local title = UI.label("", { Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 30), ZIndex = 22, Parent = box })
-	local bar = UI.new("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 50),
-		Size = UDim2.new(1, -40, 0, 34),
+local function bar(parent, y, label)
+	UI.label(label, { Position = UDim2.fromOffset(20, y), Size = UDim2.fromOffset(90, 22), TextXAlignment = Enum.TextXAlignment.Left, Font = T.BodyFont, ZIndex = 22, Parent = parent })
+	local back = UI.new("Frame", {
+		Position = UDim2.fromOffset(110, y),
+		Size = UDim2.new(1, -130, 0, 22),
 		BackgroundColor3 = T.Card,
 		ZIndex = 22,
-		Parent = box,
-	}, { UI.corner(8) })
-	local zone = UI.new("Frame", { Size = UDim2.new(zoneWidth, 0, 1, 0), BackgroundColor3 = T.Good, ZIndex = 23, Parent = bar }, { UI.corner(8) })
-	local needle = UI.new("Frame", { AnchorPoint = Vector2.new(0.5, 0), Size = UDim2.new(0, 6, 1, 10), Position = UDim2.new(0, 0, 0, -5), BackgroundColor3 = T.Text, ZIndex = 24, Parent = bar })
-	UI.label("Tap / click / Space when the line is in the green!", { Position = UDim2.new(0, 0, 1, -28), Size = UDim2.new(1, 0, 0, 20), Font = T.BodyFont, TextColor3 = T.Muted, ZIndex = 22, Parent = box })
+		Parent = parent,
+	}, { UI.corner(6) })
+	local fill = UI.new("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.Good, ZIndex = 23, Parent = back }, { UI.corner(6) })
+	return back, fill
+end
 
-	local hits = 0
-	local position, direction = 0, 1
-	local zoneStart = 0
-	local finished = false
+local function startFight(id, params)
+	phase = "fight"
+	setStatus(nil)
+	alertLabel.Visible = false
+	local rarity = Fish.RarityById[params.rarity]
+	local random = Random.new()
+	local state = Fight.NewState(params, random)
+	local holding = false
 	local connections = {}
+	local finished = false
 
-	local function placeZone()
-		zoneStart = math.random() * (1 - zoneWidth)
-		zone.Position = UDim2.new(zoneStart, 0, 0, 0)
-		title.Text = string.format("%s bite!  %d/%d", info.rarity or "", hits, hitsNeeded)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local oldSpeed = humanoid and humanoid.WalkSpeed
+	if humanoid then
+		humanoid.WalkSpeed = 0
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
 	end
-	placeZone()
 
-	local function finish(success)
+	local box = UI.new("Frame", {
+		Name = "Fight",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -100),
+		Size = UDim2.fromOffset(460, 150),
+		BackgroundColor3 = T.Background,
+		ZIndex = 21,
+		Parent = screenGui,
+	}, { UI.corner(14) })
+	local outline = UI.stroke(rarity.color, 3)
+	outline.Parent = box
+	UI.label(string.format("??? (%s)", rarity.id), { Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 26), TextColor3 = rarity.color, ZIndex = 22, Parent = box })
+	local _, catchFill = bar(box, 44, "Catch")
+	local tensionBack, tensionFill = bar(box, 74, "Tension")
+	UI.new("Frame", { Position = UDim2.fromScale(0.8, 0), Size = UDim2.new(0, 2, 1, 0), BackgroundColor3 = T.Bad, ZIndex = 24, Parent = tensionBack })
+	local mood = UI.label("Hold to reel!", { Position = UDim2.new(0, 0, 1, -40), Size = UDim2.new(1, 0, 0, 22), ZIndex = 22, Parent = box })
+	UI.label("Hold click / tap / Space to reel", { Position = UDim2.new(0, 0, 1, -18), Size = UDim2.new(1, 0, 0, 14), Font = T.BodyFont, TextColor3 = T.Muted, ZIndex = 22, Parent = box })
+
+	local function finish(outcome)
 		if finished then
 			return
 		end
 		finished = true
+		phase = "done"
 		for _, connection in ipairs(connections) do
 			connection:Disconnect()
 		end
-		overlay:Destroy()
-		done(success)
-	end
-
-	local function press()
-		if finished then
-			return
+		box:Destroy()
+		if humanoid then
+			humanoid.WalkSpeed = oldSpeed or 16
+			humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
 		end
-		if position >= zoneStart and position <= zoneStart + zoneWidth then
-			hits += 1
-			if hits >= hitsNeeded then
-				finish(true)
-				return
+		if outcome == "snapped" then
+			CameraController.Shake(4, 0.3)
+		end
+		Remotes.Reel:FireServer(id, outcome)
+		setStatus(outcome == "caught" and "Landing it..." or nil)
+		task.delay(5, function()
+			if phase == "done" and castId == id then
+				reset()
 			end
-			speed *= 1.15
-			placeZone()
-		else
-			finish(false)
-		end
+		end)
 	end
 
-	table.insert(connections, overlay.Activated:Connect(press))
-	table.insert(connections, UserInputService.InputBegan:Connect(function(input)
-		if input.KeyCode == Enum.KeyCode.Space or input.KeyCode == Enum.KeyCode.ButtonA or input.KeyCode == Enum.KeyCode.ButtonR2 then
-			press()
+	local function isReelInput(input)
+		return input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch
+			or input.KeyCode == Enum.KeyCode.Space
+			or input.KeyCode == Enum.KeyCode.ButtonR2
+			or input.KeyCode == Enum.KeyCode.ButtonA
+	end
+	table.insert(connections, UserInputService.InputBegan:Connect(function(input, processed)
+		if isReelInput(input) and not (processed and input.UserInputType == Enum.UserInputType.Touch) then
+			holding = true
 		end
 	end))
+	table.insert(connections, UserInputService.InputEnded:Connect(function(input)
+		if isReelInput(input) then
+			holding = false
+		end
+	end))
+
+	local lastPhase = state.phase
+	local clickTimer = 0
 	table.insert(connections, RunService.RenderStepped:Connect(function(dt)
-		position += direction * speed * dt
-		if position >= 1 then
-			position, direction = 1, -1
-		elseif position <= 0 then
-			position, direction = 0, 1
+		state.reeling = holding
+		local outcome = Fight.Step(state, params, math.min(dt, 0.1), random)
+
+		catchFill.Size = UDim2.fromScale(math.clamp(state.progress, 0, 1), 1)
+		tensionFill.Size = UDim2.fromScale(math.clamp(state.tension, 0, 1), 1)
+		local danger = state.tension >= 0.8
+		tensionFill.BackgroundColor3 = danger and T.Bad or (state.tension > 0.55 and T.Gold or T.Good)
+		local line = fishingLine()
+		if line then
+			line.Color = ColorSequence.new(Color3.new(1, 1, 1):Lerp(T.Bad, state.tension))
 		end
-		needle.Position = UDim2.new(position, 0, 0, -5)
+
+		if state.phase ~= lastPhase then
+			lastPhase = state.phase
+			if state.phase == "thrash" then
+				play("splash", 0.8)
+			end
+		end
+		if state.phase == "warning" then
+			mood.Text = "It's about to thrash... LET GO!"
+			mood.TextColor3 = T.Gold
+			outline.Color = T.Gold
+		elseif state.phase == "thrash" then
+			mood.Text = "THRASHING! Don't reel!"
+			mood.TextColor3 = T.Bad
+			outline.Color = T.Bad
+			CameraController.Shake(1.5 * params.strength, 0.1)
+		elseif danger then
+			mood.Text = "Line's too tight! Ease off!"
+			mood.TextColor3 = T.Bad
+			outline.Color = rarity.color
+		else
+			mood.Text = holding and "Reeling..." or "Hold to reel!"
+			mood.TextColor3 = T.Text
+			outline.Color = rarity.color
+		end
+
+		if holding then
+			clickTimer -= dt
+			if clickTimer <= 0 then
+				clickTimer = 0.18
+				play("tick", 1 + state.tension * 0.6)
+			end
+		end
+
+		if outcome then
+			finish(outcome)
+		end
 	end))
-	task.delay(MINIGAME_SECONDS, function()
-		finish(false)
-	end)
 end
+
+------------------------------------------------------------------ Results
 
 local function showCatch(result)
 	local fish = Fish.ById[result.id]
 	local rarity = Fish.RarityById[fish.rarity]
 	local card = UI.new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.32),
-		Size = UDim2.fromOffset(360, 130),
+		Position = UDim2.fromScale(0.5, 0.3),
+		Size = UDim2.fromOffset(380, 130),
 		BackgroundColor3 = T.Background,
 		Parent = screenGui,
 	}, { UI.corner(16), UI.stroke(rarity.color, 4), UI.padding(10), UI.list(4) })
-	local top = result.isNew and "NEW FISH!" or "Caught!"
+	local top = result.isNew and "NEW FISH! Added to your Fish Book" or "Caught!"
 	UI.label(top, { Size = UDim2.new(1, 0, 0, 22), TextColor3 = result.isNew and T.Gold or T.Muted, Parent = card })
 	UI.label((result.shiny and "Shiny " or "") .. fish.name, { Size = UDim2.new(1, 0, 0, 36), TextColor3 = rarity.color, Parent = card })
 	UI.label(string.format("%s  -  %s  -  worth %s coins", fish.rarity, Format.Weight(result.weight), Format.Number(result.value)), {
@@ -2488,12 +3411,25 @@ end
 
 function Fishing.Init(gui)
 	screenGui = gui
+	sound("splash", "rbxasset://sounds/impact_water.mp3", 0.7)
+	sound("ping", "rbxasset://sounds/electronicpingshort.wav", 0.6)
+	sound("tick", "rbxasset://sounds/button.wav", 0.25)
+
 	statusLabel = UI.label("", {
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -120),
-		Size = UDim2.fromOffset(460, 30),
+		Size = UDim2.fromOffset(520, 30),
 		Visible = false,
 		TextStrokeTransparency = 0.4,
+		Parent = gui,
+	})
+	alertLabel = UI.label("!", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.38),
+		Size = UDim2.fromOffset(220, 220),
+		Visible = false,
+		TextStrokeTransparency = 0,
+		ZIndex = 30,
 		Parent = gui,
 	})
 
@@ -2506,42 +3442,60 @@ function Fishing.Init(gui)
 	end
 	player.CharacterAdded:Connect(watchCharacter)
 
-	Remotes.Bite.OnClientEvent:Connect(function(castId, info)
-		if phase ~= "waiting" then
-			return
+	Remotes.Nibble.OnClientEvent:Connect(function(id)
+		if id == castId and phase == "waiting" then
+			play("splash", 1.8)
+			flashAlert("nibble...", T.Muted, 0.4)
 		end
-		phase = "reeling"
-		setStatus(nil)
-		playMinigame(info, function(success)
-			Remotes.Reel:FireServer(castId, success)
-			if phase == "reeling" then
-				setStatus("Reeling...")
-			end
-		end)
 	end)
 
-	Remotes.CatchResult.OnClientEvent:Connect(function(_, result)
+	Remotes.Bite.OnClientEvent:Connect(function(id, info)
+		if id ~= castId or phase ~= "waiting" then
+			return
+		end
+		phase = "bite"
+		play("ping")
+		play("splash", 0.9)
+		CameraController.Shake(2, 0.2)
+		flashAlert("!", T.Gold, info.window)
+		setStatus("STRIKE! Click now!")
+	end)
+
+	Remotes.Fight.OnClientEvent:Connect(function(id, params)
+		if id == castId then
+			startFight(id, params)
+		end
+	end)
+
+	Remotes.CatchResult.OnClientEvent:Connect(function(id, result, reason)
+		if id ~= castId then
+			return
+		end
 		reset()
 		if result then
 			showCatch(result)
 		else
-			Notifications.Show("The fish got away...", "warning")
+			Notifications.Show(MESSAGES[reason] or MESSAGES.escaped, "warning")
 		end
 	end)
 end
 
 return Fishing
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000015"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Always-on screen info: coins, bag, the weekly event, and the menu buttons.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Always-on screen info: coins, bag, the weekly event, and the menu buttons.
+
+local UserInputService = game:GetService("UserInputService")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Config = require(Shared.Config)
 local Zones = require(Shared.Zones)
 local Events = require(Shared.Events)
+local Bait = require(Shared.Bait)
 local Format = require(Shared.Format)
 
 local UI = require(script.Parent.UI)
 local State = require(script.Parent.State)
 local Panels = require(script.Parent.Panels)
+local CameraController = require(script.Parent.CameraController)
 local T = UI.Theme
 
 local Hud = {}
@@ -2551,20 +3505,24 @@ function Hud.Init(screenGui)
 	local stats = UI.new("Frame", {
 		Name = "Stats",
 		Position = UDim2.fromOffset(16, 16),
-		Size = UDim2.fromOffset(230, 104),
+		Size = UDim2.fromOffset(230, 126),
 		BackgroundColor3 = T.Background,
 		BackgroundTransparency = 0.15,
 		Parent = screenGui,
 	}, { UI.corner(12), UI.padding(10), UI.list(4) })
 	local coins = UI.label("0 coins", { Size = UDim2.new(1, 0, 0, 30), TextColor3 = T.Gold, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 1, Parent = stats })
 	local bag = UI.label("Bag 0/20", { Size = UDim2.new(1, 0, 0, 22), TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 2, Parent = stats })
-	local bonus = UI.label("", { Size = UDim2.new(1, 0, 0, 18), Font = T.BodyFont, TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 3, Parent = stats })
+	local baitLine = UI.label("Bait: Bread", { Size = UDim2.new(1, 0, 0, 18), Font = T.BodyFont, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 3, Parent = stats })
+	local bonus = UI.label("", { Size = UDim2.new(1, 0, 0, 18), Font = T.BodyFont, TextColor3 = T.Muted, TextXAlignment = Enum.TextXAlignment.Left, LayoutOrder = 4, Parent = stats })
 
 	local function update(data, runtime)
 		coins.Text = Format.Number(data.coins) .. " coins"
 		local size = runtime.bagSize or Config.BagSize
 		bag.Text = string.format("Bag %d/%d", #data.bag, size)
 		bag.TextColor3 = #data.bag >= size and T.Bad or T.Text
+		local bait = Bait.ById[data.bait.equipped] or Bait.ById[Bait.Default]
+		baitLine.Text = bait.free and "Bait: Bread" or string.format("Bait: %s x%d", bait.name, data.bait.owned[bait.id] or 0)
+		baitLine.TextColor3 = bait.color
 		if data.rebirths > 0 then
 			bonus.Text = string.format("Rebirth %d: +%d%% coins", data.rebirths, math.floor((Config.SellMultiplier(data.rebirths) - 1) * 100 + 0.5))
 		else
@@ -2599,31 +3557,51 @@ function Hud.Init(screenGui)
 		end
 	end)
 
-	-- Menu buttons, left side
+	-- Menu buttons, left side, with keyboard shortcuts
 	local menu = UI.new("Frame", {
 		Name = "Menu",
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 16, 0.5, 0),
-		Size = UDim2.fromOffset(120, 280),
+		Position = UDim2.new(0, 16, 0.5, 30),
+		Size = UDim2.fromOffset(130, 420),
 		BackgroundTransparency = 1,
 		Parent = screenGui,
-	}, { UI.list(8) })
+	}, { UI.list(6) })
 	local buttons = {
-		{ "Fish Book", "Book", Color3.fromRGB(80, 160, 255) },
-		{ "Rods", "Rods", Color3.fromRGB(230, 140, 60) },
-		{ "Shop", "Shop", Color3.fromRGB(70, 200, 110) },
-		{ "Travel", "Teleport", Color3.fromRGB(170, 100, 255) },
-		{ "Rebirth", "Rebirth", Color3.fromRGB(255, 90, 160) },
+		{ "Bag", "Bag", Color3.fromRGB(90, 140, 220), Enum.KeyCode.Q },
+		{ "Fish Book", "Book", Color3.fromRGB(80, 160, 255), Enum.KeyCode.B },
+		{ "Bounties", "Bounties", Color3.fromRGB(200, 150, 70), Enum.KeyCode.N },
+		{ "Rods", "Rods", Color3.fromRGB(230, 140, 60), Enum.KeyCode.R },
+		{ "Shop", "Shop", Color3.fromRGB(70, 200, 110), Enum.KeyCode.P },
+		{ "Travel", "Teleport", Color3.fromRGB(170, 100, 255), Enum.KeyCode.T },
+		{ "Rebirth", "Rebirth", Color3.fromRGB(255, 90, 160), nil },
 	}
+	local shortcuts = {}
 	for index, info in ipairs(buttons) do
-		UI.button(info[1], info[3], function()
+		local keyName = info[4] and (" (" .. info[4].Name .. ")") or ""
+		UI.button(info[1] .. keyName, info[3], function()
 			Panels[info[2]].toggle()
-		end, { Size = UDim2.fromOffset(120, 46), LayoutOrder = index, Parent = menu })
+		end, { Size = UDim2.fromOffset(130, 42), LayoutOrder = index, Parent = menu })
+		if info[4] then
+			shortcuts[info[4]] = info[2]
+		end
 	end
+	if CameraController.IsActive() then
+		UI.label("Alt: free the mouse", { Size = UDim2.fromOffset(130, 18), Font = T.BodyFont, TextColor3 = T.Muted, LayoutOrder = 99, Parent = menu })
+	end
+
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then
+			return
+		end
+		local panel = shortcuts[input.KeyCode]
+		if panel then
+			Panels[panel].toggle()
+		end
+	end)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000016"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[-- Small messages that pop up on the right side of the screen.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[-- Small messages that pop up on the right side of the screen.
 
 local TweenService = game:GetService("TweenService")
 
@@ -2696,7 +3674,8 @@ function Notifications.Show(text, kind)
 end
 
 return Notifications
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000017"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- The menus: Fish Book, Rods, Shop, Teleport and Rebirth.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001C"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- The menus: Bag, Fish Market, Bait & Tackle, Bounties, Fish Book, Rods,
+-- Shop, Travel and Rebirth.
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
@@ -2708,6 +3687,9 @@ local Rods = require(Shared.Rods)
 local Zones = require(Shared.Zones)
 local Shop = require(Shared.Shop)
 local Events = require(Shared.Events)
+local Bait = require(Shared.Bait)
+local Market = require(Shared.Market)
+local Bounties = require(Shared.Bounties)
 local Format = require(Shared.Format)
 
 local UI = require(script.Parent.UI)
@@ -2756,6 +3738,211 @@ end
 
 local function heading(parent, text, order)
 	UI.label(text, { Size = UDim2.new(1, -8, 0, 30), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = T.Gold, LayoutOrder = order, Parent = parent })
+end
+
+------------------------------------------------------------------ Bag and Fish Market
+local function sortedBag(data)
+	local list = table.clone(data.bag)
+	table.sort(list, function(a, b)
+		return a.value > b.value
+	end)
+	return list
+end
+
+local function hotNames(hot)
+	local names = {}
+	for id in pairs(hot) do
+		table.insert(names, Fish.ById[id].name)
+	end
+	table.sort(names)
+	return table.concat(names, ", ")
+end
+
+-- One row per fish. selling = true shows Sell buttons (Fish Market only).
+local function fishRows(body, data, selling, startOrder)
+	local hot = Market.HotFish()
+	local bag = sortedBag(data)
+	if #bag == 0 then
+		UI.label("Your bag is empty. Go catch some fish!", { Size = UDim2.new(1, -8, 0, 26), Font = T.BodyFont, TextColor3 = T.Muted, LayoutOrder = startOrder, Parent = body })
+		return
+	end
+	for index, entry in ipairs(bag) do
+		local fish = Fish.ById[entry.id]
+		local rarity = Fish.RarityById[fish.rarity]
+		local card = row(body, 50, startOrder + index)
+		local name = (entry.shiny and "Shiny " or "") .. fish.name
+		UI.label(name, { Position = UDim2.fromOffset(12, 4), Size = UDim2.new(0.5, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = rarity.color, Parent = card })
+		local price = Market.Price(entry, data.rebirths, hot)
+		local detail = string.format("%s  -  %s  -  %s coins%s", fish.rarity, Format.Weight(entry.weight), Format.Number(price), hot[entry.id] and "  (IN DEMAND x2)" or "")
+		UI.label(detail, { Position = UDim2.fromOffset(12, 28), Size = UDim2.new(0.6, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Left, Font = T.BodyFont, TextColor3 = hot[entry.id] and T.Gold or T.Muted, Parent = card })
+
+		local uid = tostring(entry.uid)
+		UI.button(entry.favorite and "Favorite" or "Keep?", entry.favorite and T.Gold or T.Card, function()
+			act("ToggleFavorite", uid)
+		end, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, selling and -112 or -12, 0.5, 0), Size = UDim2.fromOffset(96, 34), Parent = card })
+		if selling then
+			UI.button("Sell", entry.favorite and T.Card or T.Good, function()
+				act("SellFish", uid)
+			end, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(90, 34), Parent = card })
+		end
+	end
+end
+
+local function renderBag(body)
+	local data = State.data
+	if not data then
+		return
+	end
+	UI.list(8).Parent = body
+	local size = State.runtime.bagSize or Config.BagSize
+	heading(body, string.format("Fish (%d/%d)", #data.bag, size), 1)
+	UI.label("Favorites are never sold, used for bait or turned in. Sell at the Fish Market.", { Size = UDim2.new(1, -8, 0, 20), Font = T.BodyFont, TextColor3 = T.Muted, LayoutOrder = 2, Parent = body })
+	fishRows(body, data, false, 10)
+
+	heading(body, "Bait (goes on your hook)", 1000)
+	for index, bait in ipairs(Bait.List) do
+		local count = bait.free and math.huge or (data.bait.owned[bait.id] or 0)
+		if count > 0 then
+			local card = row(body, 50, 1000 + index)
+			UI.label(bait.name .. (bait.free and "" or ("  x" .. count)), { Position = UDim2.fromOffset(12, 4), Size = UDim2.new(0.6, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = bait.color, Parent = card })
+			UI.label(bait.description, { Position = UDim2.fromOffset(12, 28), Size = UDim2.new(0.7, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Left, Font = T.BodyFont, TextColor3 = T.Muted, Parent = card })
+			local equipped = data.bait.equipped == bait.id
+			UI.button(equipped and "On hook" or "Use", equipped and T.Card or T.Accent, function()
+				act("EquipBait", bait.id)
+			end, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(110, 34), Parent = card })
+		end
+	end
+end
+
+local function renderMarket(body)
+	local data = State.data
+	if not data then
+		return
+	end
+	UI.list(8).Parent = body
+	local hot, left = Market.HotFish()
+	UI.label(string.format("In demand (sells for x2) for %s: %s", Format.Duration(left), hotNames(hot)), {
+		Size = UDim2.new(1, -8, 0, 40),
+		TextWrapped = true,
+		TextColor3 = T.Gold,
+		LayoutOrder = 1,
+		Parent = body,
+	})
+
+	local total, count = 0, 0
+	for _, entry in ipairs(data.bag) do
+		if not entry.favorite then
+			total += Market.Price(entry, data.rebirths, hot)
+			count += 1
+		end
+	end
+	UI.button(string.format("Sell all %d for %s coins (keeps favorites)", count, Format.Number(total)), count > 0 and T.Good or T.Card, function()
+		act("SellAll")
+	end, { Size = UDim2.new(1, -8, 0, 44), LayoutOrder = 2, Parent = body })
+	UI.label("Tip: keep fish that are about to be in demand, or trade them for bait and bounties.", { Size = UDim2.new(1, -8, 0, 18), Font = T.BodyFont, TextColor3 = T.Muted, LayoutOrder = 3, Parent = body })
+	fishRows(body, data, true, 10)
+end
+
+------------------------------------------------------------------ Bait & Tackle
+local function fishCountByRarity(data)
+	local counts = {}
+	for _, entry in ipairs(data.bag) do
+		if not entry.favorite then
+			local rarity = Fish.ById[entry.id].rarity
+			counts[rarity] = (counts[rarity] or 0) + 1
+		end
+	end
+	return counts
+end
+
+local function renderBait(body)
+	local data = State.data
+	if not data then
+		return
+	end
+	UI.list(8).Parent = body
+	local counts = fishCountByRarity(data)
+	UI.label("Better bait = better fish. A fish that bites eats the bait, even if it gets away.", { Size = UDim2.new(1, -8, 0, 20), Font = T.BodyFont, TextColor3 = T.Muted, LayoutOrder = 0, Parent = body })
+	for index, bait in ipairs(Bait.List) do
+		if not bait.free then
+			local owned = data.bait.owned[bait.id] or 0
+			local card = row(body, 96, index)
+			UI.label(string.format("%s  (you have %d)", bait.name, owned), { Position = UDim2.fromOffset(12, 6), Size = UDim2.new(0.45, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = bait.color, Parent = card })
+			UI.label(bait.description, { Position = UDim2.fromOffset(12, 32), Size = UDim2.new(0.45, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Left, Font = T.BodyFont, TextColor3 = T.Muted, Parent = card })
+			if bait.recipe then
+				local parts, canCraft = {}, true
+				for _, need in ipairs(bait.recipe) do
+					local have = counts[need.rarity] or 0
+					canCraft = canCraft and have >= need.count
+					table.insert(parts, string.format("%d %s (have %d)", need.count, need.rarity, have))
+				end
+				UI.label(string.format("Make %d from: %s", bait.craftAmount, table.concat(parts, " + ")), { Position = UDim2.fromOffset(12, 54), Size = UDim2.new(0.62, 0, 0, 34), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, Font = T.BodyFont, TextColor3 = T.Text, Parent = card })
+				UI.button("Make", canCraft and T.Good or T.Card, function()
+					act("CraftBait", bait.id)
+				end, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 52), Size = UDim2.fromOffset(150, 34), Parent = card })
+			end
+			if bait.price then
+				UI.button(string.format("Buy %d: %s", bait.buyAmount, Format.Number(bait.price)), data.coins >= bait.price and T.Accent or T.Card, function()
+					act("BuyBait", bait.id)
+				end, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 10), Size = UDim2.fromOffset(150, 34), Parent = card })
+			end
+			if owned > 0 then
+				local equipped = data.bait.equipped == bait.id
+				UI.button(equipped and "On hook" or "Use", equipped and T.Card or T.Accent, function()
+					act("EquipBait", bait.id)
+				end, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -170, 0, 10), Size = UDim2.fromOffset(90, 34), Parent = card })
+			end
+		end
+	end
+end
+
+------------------------------------------------------------------ Bounties
+local function renderBounties(body)
+	local data = State.data
+	if not data then
+		return
+	end
+	UI.list(8).Parent = body
+	local now = os.time()
+	local resetIn = 86400 - (now % 86400)
+	UI.label(string.format("Old Pete pays %dx the market price, plus bait. New bounties in %s.", Bounties.RewardMultiplier, Format.Duration(resetIn)), {
+		Size = UDim2.new(1, -8, 0, 22),
+		Font = T.BodyFont,
+		TextColor3 = T.Muted,
+		LayoutOrder = 0,
+		Parent = body,
+	})
+	for index, bounty in ipairs(data.bounties.list) do
+		local fish = Fish.ById[bounty.fishId]
+		local rarity = Fish.RarityById[fish.rarity]
+		local have = 0
+		for _, entry in ipairs(data.bag) do
+			if entry.id == bounty.fishId and not entry.favorite then
+				have += 1
+			end
+		end
+		local card = row(body, 70, index)
+		UI.label(string.format("Bring %d %s", bounty.count, fish.name), { Position = UDim2.fromOffset(12, 6), Size = UDim2.new(0.62, 0, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = rarity.color, Parent = card })
+		local reward = Bounties.Reward(bounty, Config.SellMultiplier(data.rebirths))
+		local zone = Zones.ById[fish.zone]
+		UI.label(string.format("Have %d/%d  -  found in %s  -  reward %s coins + %d %s", math.min(have, bounty.count), bounty.count, zone and zone.name or "", Format.Number(reward), bounty.baitAmount, Bait.ById[bounty.bait].name), {
+			Position = UDim2.fromOffset(12, 36),
+			Size = UDim2.new(0.68, 0, 0, 28),
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Font = T.BodyFont,
+			TextColor3 = T.Muted,
+			Parent = card,
+		})
+		local props = { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0), Size = UDim2.fromOffset(130, 40), Parent = card }
+		if bounty.done then
+			UI.button("Done!", T.Card, nil, props)
+		else
+			UI.button("Turn in", have >= bounty.count and T.Good or T.Card, function()
+				act("ClaimBounty", tostring(index))
+			end, props)
+		end
+	end
 end
 
 ------------------------------------------------------------------ Fish Book
@@ -3026,8 +4213,8 @@ local function renderRebirth(body)
 		string.format("Rebirths: %d   (now +%d%% coins from fish)", data.rebirths, nowBonus),
 		string.format("Next rebirth: +%d%% coins from fish, forever", nextBonus),
 		string.format("Cost: %s coins", Format.Number(cost)),
-		"You keep: your Fish Book, titles, skins, trails and passes.",
-		"You reset: coins, rods, unlocked zones and your bag.",
+		"You keep: your Fish Book, favorite fish, bait, titles, skins, trails and passes.",
+		"You reset: coins, rods, unlocked zones and the rest of your bag.",
 	}
 	if requiredZone then
 		table.insert(lines, "Requires: " .. requiredZone.name .. " unlocked.")
@@ -3044,6 +4231,10 @@ local function renderRebirth(body)
 end
 
 function Panels.Init(screenGui)
+	Panels.Bag = UI.window(screenGui, "Bag", renderBag)
+	Panels.Market = UI.window(screenGui, "Fish Market", renderMarket)
+	Panels.Bait = UI.window(screenGui, "Bait & Tackle", renderBait)
+	Panels.Bounties = UI.window(screenGui, "Old Pete's Bounties", renderBounties)
 	Panels.Book = UI.window(screenGui, "Fish Book", renderBook)
 	Panels.Rods = UI.window(screenGui, "Rods", renderRods)
 	Panels.Shop = UI.window(screenGui, "Shop", renderShop)
@@ -3051,14 +4242,14 @@ function Panels.Init(screenGui)
 	Panels.Rebirth = UI.window(screenGui, "Rebirth", renderRebirth)
 
 	State.Changed:Connect(function()
-		for _, name in ipairs({ "Book", "Rods", "Shop", "Teleport", "Rebirth" }) do
+		for _, name in ipairs({ "Bag", "Market", "Bait", "Bounties", "Book", "Rods", "Shop", "Teleport", "Rebirth" }) do
 			Panels[name].refresh()
 		end
 	end)
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[-- The player's latest save data, as sent by the server.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001D"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[-- The player's latest save data, as sent by the server.
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Remotes = require(Shared.Remotes)
@@ -3093,7 +4284,7 @@ function State.Action(actionName, argument)
 end
 
 return State
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- Helpers for building the on-screen menus in code, so nothing has to be
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001E"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- Helpers for building the on-screen menus in code, so nothing has to be
 -- drawn by hand in Studio. Colors and fonts live in UI.Theme.
 
 local UI = {}
@@ -3196,6 +4387,12 @@ end
 -- A centered window with a title, a close button and a scrolling body.
 -- Only one window is open at a time.
 local openWindow = nil
+local windowChanged = Instance.new("BindableEvent")
+UI.WindowChanged = windowChanged.Event -- fires with true/false when a window opens/closes
+
+function UI.IsWindowOpen()
+	return openWindow ~= nil
+end
 
 function UI.window(screenGui, title, render)
 	local frame = UI.new("Frame", {
@@ -3238,12 +4435,14 @@ function UI.window(screenGui, title, render)
 		openWindow = window
 		frame.Visible = true
 		window.refresh()
+		windowChanged:Fire(true)
 	end
 
 	function window.close()
 		frame.Visible = false
 		if openWindow == window then
 			openWindow = nil
+			windowChanged:Fire(false)
 		end
 	end
 
@@ -3266,7 +4465,7 @@ function UI.window(screenGui, title, render)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- Things in the world that only this player sees: weather, opened zone gates
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001F"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- Things in the world that only this player sees: weather, opened zone gates
 -- and the VIP door.
 
 local Lighting = game:GetService("Lighting")

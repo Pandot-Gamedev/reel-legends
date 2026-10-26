@@ -3,13 +3,16 @@
 
 local Fish = {}
 
+-- hookWindow: seconds to strike after the real bite
+-- reel: how fast the catch bar fills while reeling (per second)
+-- strength: how hard the fish fights (thrash length, line tension, pull-back)
 Fish.Rarities = {
-	{ id = "Common", weight = 60, color = Color3.fromRGB(200, 200, 200), hits = 1, speed = 0.9 },
-	{ id = "Uncommon", weight = 25, color = Color3.fromRGB(90, 200, 90), hits = 1, speed = 1.1 },
-	{ id = "Rare", weight = 10, color = Color3.fromRGB(70, 140, 255), hits = 2, speed = 1.3 },
-	{ id = "Epic", weight = 4, color = Color3.fromRGB(170, 80, 255), hits = 2, speed = 1.55 },
-	{ id = "Legendary", weight = 0.9, color = Color3.fromRGB(255, 170, 0), hits = 3, speed = 1.8 },
-	{ id = "Mythic", weight = 0.1, color = Color3.fromRGB(255, 60, 120), hits = 3, speed = 2.1 },
+	{ id = "Common", weight = 60, color = Color3.fromRGB(200, 200, 200), hookWindow = 1.0, reel = 0.3, strength = 0.8 },
+	{ id = "Uncommon", weight = 25, color = Color3.fromRGB(90, 200, 90), hookWindow = 0.9, reel = 0.24, strength = 1.0 },
+	{ id = "Rare", weight = 10, color = Color3.fromRGB(70, 140, 255), hookWindow = 0.8, reel = 0.19, strength = 1.25 },
+	{ id = "Epic", weight = 4, color = Color3.fromRGB(170, 80, 255), hookWindow = 0.7, reel = 0.15, strength = 1.5 },
+	{ id = "Legendary", weight = 0.9, color = Color3.fromRGB(255, 170, 0), hookWindow = 0.6, reel = 0.14, strength = 1.7 },
+	{ id = "Mythic", weight = 0.1, color = Color3.fromRGB(255, 60, 120), hookWindow = 0.55, reel = 0.12, strength = 1.95 },
 }
 
 Fish.RarityById = {}

@@ -31,12 +31,22 @@ That one file contains the whole game: all scripts are already inside it.
 
 **Try this to check everything works:**
 
+- [ ] Move the mouse: the camera turns with it, over your character's shoulder. Scroll to zoom.
+      Press **Alt** to get the mouse pointer back (press again to lock it).
 - [ ] Press **1** to hold your fishing rod.
-- [ ] Walk onto the first bridge and click the water. A red bobber lands.
-- [ ] When a bar appears at the bottom, click (or press Space) while the white line is in the green.
+- [ ] Walk onto the first bridge, aim at the water and click. A red bobber lands.
+- [ ] Watch for small **"nibble..."** dips. Don't click on those, or you scare the fish away.
+- [ ] When a big **"!"** appears and the bobber plunges, click fast. Too slow and the fish steals your bait.
+- [ ] The fight starts. **Hold** the mouse (or Space) to reel. Let go when the tension bar turns red,
+      and when it says the fish is about to thrash. Fill the Catch bar to land it.
 - [ ] A card shows the fish you caught. Your **Bag** count (top left) goes up.
-- [ ] Walk back to the **Fish Market** stall, press **E** to sell. Your coins go up.
-- [ ] Open **Fish Book**, **Rods**, **Shop**, **Travel** and **Rebirth** on the left.
+- [ ] Press **Q** to open your Bag. Mark a fish as a favorite ("Keep?") so it's never sold.
+- [ ] Walk to the **Fish Market** stall and press **E**. Sell one fish, or sell everything except
+      favorites. Fish marked IN DEMAND sell for double.
+- [ ] Press **E** at **Bait & Tackle**: buy Worms, or make Shrimp out of 3 Common fish.
+      Then pick it in your Bag so it goes on your hook.
+- [ ] Press **E** at **Old Pete's Bounties** (or press **N**): today's three fish requests.
+- [ ] Try **Fish Book (B)**, **Rods (R)**, **Shop (P)**, **Travel (T)** and **Rebirth**.
 - [ ] The top banner shows this week's legendary fish and the weather.
 
 A message saying **"Saving is off"** is normal for now. Step 3 fixes it.
@@ -86,7 +96,7 @@ window). If you rebuild something, copy these onto your new parts:
 | `FishingZone` | `shallows`, `mangroves` or `frostbite` | Invisible flat part on the water. Casting into it catches that zone's fish. |
 | `ZoneGate` | zone id | Wall blocking a locked zone. Needs a ProximityPrompt inside. |
 | `ZoneSpawn` | zone id, or `hub` | Where the Travel menu drops players. |
-| `Station` | `Sell`, `Rods`, `Leaderboard`, `EventBoard` | Market counter, rod shop counter, and the two boards. |
+| `Station` | `Sell`, `Rods`, `Bait`, `Bounties`, `Leaderboard`, `EventBoard` | Market, rod shop and bait shop counters, the bounty board, and the two info boards. Each needs a ProximityPrompt inside (except the info boards). |
 | `VipDoor` | ticked | Door only VIP players can walk through. |
 
 ## Step 5. Set up the shop (30 minutes)
@@ -172,6 +182,9 @@ Everything you might want to tweak is in plain lists, no coding needed:
 |---|---|
 | Fish names, rarities, values | `ReplicatedStorage > Shared > Fish` |
 | Rod prices and stats | `ReplicatedStorage > Shared > Rods` |
+| Bait prices, recipes and bonuses | `ReplicatedStorage > Shared > Bait` |
+| How hard fish fight, strike timing | `ReplicatedStorage > Shared > Fight` and the rarity list in `Fish` |
+| Bounty rewards | `ReplicatedStorage > Shared > Bounties` |
 | Zone unlock prices | `ReplicatedStorage > Shared > Zones` |
 | Bag size, rebirth cost, daily reward, weather length | `ReplicatedStorage > Shared > Config` |
 | Shop items and IDs | `ReplicatedStorage > Shared > Shop` |

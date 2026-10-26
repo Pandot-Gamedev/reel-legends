@@ -5,7 +5,7 @@
 --   FishingZone = "shallows"   invisible flat part on the water surface
 --   ZoneGate    = "mangroves"  wall that blocks a locked zone
 --   ZoneSpawn   = "frostbite"  where the teleporter drops players
---   Station     = "Sell" / "Rods" / "Leaderboard" / "EventBoard"
+--   Station     = "Sell" / "Rods" / "Bait" / "Bounties" / "Leaderboard" / "EventBoard"
 --   VipDoor     = true         door only VIP players can walk through
 
 local Workspace = game:GetService("Workspace")
@@ -199,11 +199,22 @@ function MapBuilder.Build()
 
 	local sellCounter = stall(scenery, "FishMarket", Vector3.new(-35, GROUND_Y, -25), Color3.fromRGB(60, 140, 220), "FISH MARKET")
 	sellCounter:SetAttribute("Station", "Sell")
-	prompt(sellCounter, "Sell all fish", "Fish Market")
+	prompt(sellCounter, "Sell fish", "Fish Market")
 
 	local rodCounter = stall(scenery, "RodShop", Vector3.new(35, GROUND_Y, -25), Color3.fromRGB(220, 120, 50), "ROD SHOP")
 	rodCounter:SetAttribute("Station", "Rods")
 	prompt(rodCounter, "Browse rods", "Rod Shop")
+
+	local baitCounter = stall(scenery, "BaitShop", Vector3.new(35, GROUND_Y, 8), Color3.fromRGB(120, 190, 80), "BAIT & TACKLE")
+	baitCounter:SetAttribute("Station", "Bait")
+	prompt(baitCounter, "Buy & make bait", "Bait & Tackle")
+
+	local bountyBoard = board(map, "BountyBoard", CFrame.new(-30, GROUND_Y + 6, 48), Vector3.new(14, 10, 1), "Bounties")
+	bountyBoard.Color = Color3.fromRGB(120, 85, 55)
+	bountyBoard.Material = Enum.Material.WoodPlanks
+	sign(bountyBoard, "OLD PETE'S\nBOUNTIES", Enum.NormalId.Front, Color3.fromRGB(255, 230, 160))
+	sign(bountyBoard, "OLD PETE'S\nBOUNTIES", Enum.NormalId.Back, Color3.fromRGB(255, 230, 160))
+	prompt(bountyBoard, "Check bounties", "Bounty Board")
 
 	board(map, "GlobalBoard", CFrame.new(0, GROUND_Y + 10, -60), Vector3.new(28, 18, 1), "Leaderboard")
 	board(map, "EventBoard", CFrame.new(-55, GROUND_Y + 7, 25) * CFrame.Angles(0, math.rad(90), 0), Vector3.new(20, 12, 1), "EventBoard")

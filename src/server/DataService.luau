@@ -22,7 +22,13 @@ local function defaultData()
 		totalEarned = 0,
 		totalCaught = 0,
 		rebirths = 0,
-		bag = {}, -- { {id, weight, value, shiny} }
+		bag = {}, -- { {uid, id, weight, value, shiny, favorite} }
+		nextUid = 1,
+		bait = {
+			owned = {}, -- [baitId] = how many
+			equipped = "bread",
+		},
+		bounties = { day = 0, list = {} },
 		rodsOwned = { [Rods.Default] = true },
 		equippedRod = Rods.Default,
 		zones = { [Zones.Default] = true },
@@ -97,7 +103,15 @@ local function loadData(player)
 		end)
 
 		if ok and not lockedElsewhere and result then
-			return reconcile(result.data or defaultData(), defaultData()), true
+			local data = reconcile(result.data or defaultData(), defaultData())
+			-- Saves from before fish had ids
+			for _, fish in ipairs(data.bag) do
+				if not fish.uid then
+					fish.uid = data.nextUid
+					data.nextUid += 1
+				end
+			end
+			return data, true
 		end
 
 		if not ok then

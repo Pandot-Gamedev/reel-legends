@@ -101,6 +101,12 @@ end
 -- A centered window with a title, a close button and a scrolling body.
 -- Only one window is open at a time.
 local openWindow = nil
+local windowChanged = Instance.new("BindableEvent")
+UI.WindowChanged = windowChanged.Event -- fires with true/false when a window opens/closes
+
+function UI.IsWindowOpen()
+	return openWindow ~= nil
+end
 
 function UI.window(screenGui, title, render)
 	local frame = UI.new("Frame", {
@@ -143,12 +149,14 @@ function UI.window(screenGui, title, render)
 		openWindow = window
 		frame.Visible = true
 		window.refresh()
+		windowChanged:Fire(true)
 	end
 
 	function window.close()
 		frame.Visible = false
 		if openWindow == window then
 			openWindow = nil
+			windowChanged:Fire(false)
 		end
 	end
 
