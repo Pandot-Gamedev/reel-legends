@@ -5,31 +5,32 @@
 --   Game passes: Creator Dashboard > your game > Monetization > Passes
 --   Cosmetics:   Creator Dashboard > your game > Monetization > Developer Products
 -- An id of 0 means "not set up yet": the item shows as "Coming soon" in the shop.
+-- Ids below were set up in the Creator Dashboard on 2026-10-27.
 
 local Shop = {}
 
 Shop.Passes = {
-	{ id = "VIP", gamePassId = 0, name = "VIP", suggestedPrice = 250, description = "Golden VIP name tag, a crown, and access to the VIP dock." },
-	{ id = "AutoSell", gamePassId = 0, name = "Auto Sell", suggestedPrice = 150, description = "Your bag sells itself when it fills up, wherever you are." },
-	{ id = "BigBag", gamePassId = 0, name = "Big Bag", suggestedPrice = 100, description = "Carry 60 fish instead of 20." },
-	{ id = "Teleporter", gamePassId = 0, name = "Zone Teleporter", suggestedPrice = 200, description = "Teleport to any zone you have unlocked." },
+	{ id = "VIP", gamePassId = 2053638634, name = "VIP", suggestedPrice = 250, description = "Golden VIP name tag, a crown, and access to the VIP dock." },
+	{ id = "AutoSell", gamePassId = 2052342737, name = "Auto Sell", suggestedPrice = 150, description = "Your bag sells itself when it fills up, wherever you are." },
+	{ id = "BigBag", gamePassId = 2054172679, name = "Big Bag", suggestedPrice = 100, description = "Carry 60 fish instead of 20." },
+	{ id = "Teleporter", gamePassId = 2052738656, name = "Zone Teleporter", suggestedPrice = 200, description = "Teleport to any zone you have unlocked." },
 }
 
 -- kind: "rodSkin" changes how your rod looks, "trail" adds a trail behind you,
 -- "title" shows a title above your head.
 Shop.Cosmetics = {
-	{ id = "skin_golden", kind = "rodSkin", name = "Golden Rod Skin", productId = 0, suggestedPrice = 99, color = Color3.fromRGB(255, 200, 40), material = Enum.Material.Foil },
-	{ id = "skin_neon", kind = "rodSkin", name = "Neon Pink Rod Skin", productId = 0, suggestedPrice = 75, color = Color3.fromRGB(255, 60, 200), material = Enum.Material.Neon },
-	{ id = "skin_galaxy", kind = "rodSkin", name = "Galaxy Rod Skin", productId = 0, suggestedPrice = 149, color = Color3.fromRGB(110, 60, 255), material = Enum.Material.ForceField },
-	{ id = "skin_candy", kind = "rodSkin", name = "Candy Rod Skin", productId = 0, suggestedPrice = 49, color = Color3.fromRGB(255, 120, 150), material = Enum.Material.SmoothPlastic },
+	{ id = "skin_golden", kind = "rodSkin", name = "Golden Rod Skin", productId = 3722967138, suggestedPrice = 99, color = Color3.fromRGB(255, 200, 40), material = Enum.Material.Foil },
+	{ id = "skin_neon", kind = "rodSkin", name = "Neon Pink Rod Skin", productId = 3722967637, suggestedPrice = 75, color = Color3.fromRGB(255, 60, 200), material = Enum.Material.Neon },
+	{ id = "skin_galaxy", kind = "rodSkin", name = "Galaxy Rod Skin", productId = 3722588364, suggestedPrice = 149, color = Color3.fromRGB(110, 60, 255), material = Enum.Material.ForceField },
+	{ id = "skin_candy", kind = "rodSkin", name = "Candy Rod Skin", productId = 3722968012, suggestedPrice = 49, color = Color3.fromRGB(255, 120, 150), material = Enum.Material.SmoothPlastic },
 
-	{ id = "trail_ocean", kind = "trail", name = "Ocean Trail", productId = 0, suggestedPrice = 49, colors = { Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 255, 200) } },
-	{ id = "trail_fire", kind = "trail", name = "Fire Trail", productId = 0, suggestedPrice = 75, colors = { Color3.fromRGB(255, 220, 0), Color3.fromRGB(255, 40, 0) } },
-	{ id = "trail_rainbow", kind = "trail", name = "Rainbow Trail", productId = 0, suggestedPrice = 129, colors = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(255, 255, 0), Color3.fromRGB(0, 255, 0), Color3.fromRGB(0, 120, 255), Color3.fromRGB(200, 0, 255) } },
+	{ id = "trail_ocean", kind = "trail", name = "Ocean Trail", productId = 3722968156, suggestedPrice = 49, colors = { Color3.fromRGB(0, 170, 255), Color3.fromRGB(0, 255, 200) } },
+	{ id = "trail_fire", kind = "trail", name = "Fire Trail", productId = 3722967819, suggestedPrice = 75, colors = { Color3.fromRGB(255, 220, 0), Color3.fromRGB(255, 40, 0) } },
+	{ id = "trail_rainbow", kind = "trail", name = "Rainbow Trail", productId = 3722588585, suggestedPrice = 129, colors = { Color3.fromRGB(255, 0, 0), Color3.fromRGB(255, 255, 0), Color3.fromRGB(0, 255, 0), Color3.fromRGB(0, 120, 255), Color3.fromRGB(200, 0, 255) } },
 
-	{ id = "title_bigcatch", kind = "title", name = "Title: Big Catch", text = "Big Catch", productId = 0, suggestedPrice = 25, color = Color3.fromRGB(120, 200, 255) },
-	{ id = "title_whisperer", kind = "title", name = "Title: Fish Whisperer", text = "Fish Whisperer", productId = 0, suggestedPrice = 49, color = Color3.fromRGB(160, 255, 160) },
-	{ id = "title_sealegend", kind = "title", name = "Title: Sea Legend", text = "Sea Legend", productId = 0, suggestedPrice = 99, color = Color3.fromRGB(255, 190, 60) },
+	{ id = "title_bigcatch", kind = "title", name = "Title: Big Catch", text = "Big Catch", productId = 3722968502, suggestedPrice = 25, color = Color3.fromRGB(120, 200, 255) },
+	{ id = "title_whisperer", kind = "title", name = "Title: Fish Whisperer", text = "Fish Whisperer", productId = 3722968318, suggestedPrice = 49, color = Color3.fromRGB(160, 255, 160) },
+	{ id = "title_sealegend", kind = "title", name = "Title: Sea Legend", text = "Sea Legend", productId = 3722967399, suggestedPrice = 99, color = Color3.fromRGB(255, 190, 60) },
 }
 
 -- Free titles earned by playing. The server checks the "rule".
