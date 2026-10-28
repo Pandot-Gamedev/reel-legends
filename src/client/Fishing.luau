@@ -50,6 +50,7 @@ local aimLabel
 local phase = "idle" -- idle, casting, waiting, bite, fight, done
 local castId = nil
 local token = 0
+local closeFight = nil -- set while the fight box is on screen
 
 local sounds = {}
 local function sound(name, id, volume)
@@ -107,6 +108,9 @@ local function setRooted(on)
 end
 
 local function reset()
+	if closeFight then
+		closeFight()
+	end
 	setRooted(false)
 	phase = "idle"
 	castId = nil
@@ -233,6 +237,9 @@ local function bar(parent, y, label)
 end
 
 local function startFight(id, params)
+	if closeFight then
+		closeFight()
+	end
 	phase = "fight"
 	setStatus(nil)
 	alertLabel.Visible = false
@@ -262,16 +269,24 @@ local function startFight(id, params)
 	local mood = UI.label("Hold to reel!", { Position = UDim2.new(0, 0, 1, -40), Size = UDim2.new(1, 0, 0, 22), ZIndex = 22, Parent = box })
 	UI.label("Hold click / tap / Space to reel", { Position = UDim2.new(0, 0, 1, -18), Size = UDim2.new(1, 0, 0, 14), Font = T.BodyFont, TextColor3 = T.Muted, ZIndex = 22, Parent = box })
 
-	local function finish(outcome)
-		if finished then
-			return
-		end
+	-- Takes the fight off screen. Also used by reset() when the player dies or
+	-- the server ends the fight, so the box never stays stuck on screen.
+	local function close()
 		finished = true
-		phase = "done"
+		closeFight = nil
 		for _, connection in ipairs(connections) do
 			connection:Disconnect()
 		end
 		box:Destroy()
+	end
+	closeFight = close
+
+	local function finish(outcome)
+		if finished then
+			return
+		end
+		close()
+		phase = "done"
 		if outcome == "snapped" then
 			CameraController.Shake(4, 0.3)
 		end
