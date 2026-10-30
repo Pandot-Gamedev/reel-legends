@@ -2,7 +2,7 @@
 
 local Config = {}
 
-Config.GameName = "Reel Legends"
+Config.GameName = "Hook a Mythic Fish!"
 
 -- Saving
 Config.DataStoreName = "PlayerData_v1"

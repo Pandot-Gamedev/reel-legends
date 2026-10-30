@@ -1,4 +1,4 @@
--- Reel Legends player script. Builds the screen and starts fishing controls.
+-- Hook a Mythic Fish! player script. Builds the screen and starts fishing controls.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")

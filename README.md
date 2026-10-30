@@ -1,4 +1,6 @@
-# Reel Legends
+# Hook a Mythic Fish!
+
+Called Reel Legends until 2026-10-30, when it was renamed to stand out in Roblox search (no other game uses the new name). The repo, file and code names keep the old name.
 
 A relaxing Roblox fishing collection game: cast, catch, sell, upgrade your rod, unlock new
 islands and fill your Fish Book.

@@ -1,4 +1,4 @@
--- Reel Legends server. Starts every service in order.
+-- Hook a Mythic Fish! server. Starts every service in order.
 
 local MapBuilder = require(script.MapBuilder)
 local DataService = require(script.DataService)
@@ -22,4 +22,4 @@ WorldService.Start()
 NpcService.Start()
 DataService.Start()
 
-print("[Reel Legends] Server ready")
+print("[Hook a Mythic Fish!] Server ready")
