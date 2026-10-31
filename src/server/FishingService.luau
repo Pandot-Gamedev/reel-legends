@@ -20,6 +20,7 @@ local Events = require(Shared.Events)
 local Bait = require(Shared.Bait)
 local Fight = require(Shared.Fight)
 local FishModel = require(Shared.FishModel)
+local RodModel = require(Shared.RodModel)
 local Level = require(Shared.Level)
 local Format = require(Shared.Format)
 local Remotes = require(Shared.Remotes)
@@ -414,6 +415,8 @@ local function onReel(player, castId, outcome)
 		return
 	end
 	clearCast(player)
+	-- No new cast until the "Caught!" card has gone from the player's screen
+	lastCast[player] = os.clock() + Config.CatchCardSeconds - Config.CastCooldown
 
 	local fish = Fish.ById[cast.catch.id]
 	local caught = cast.catch
@@ -511,6 +514,7 @@ local function buildRod(player)
 	handle.Massless = true
 	handle.Color = rod.color
 	handle.Material = Enum.Material.SmoothPlastic
+	handle.Transparency = 1 -- the rod's look is built from welded pieces (RodModel)
 	handle.Parent = tool
 
 	local tip = Instance.new("Attachment")
@@ -523,7 +527,8 @@ local function buildRod(player)
 	local ROD_TILT = 50
 	tool.Grip = CFrame.new(0, -length / 2 + 0.6, 0) * CFrame.Angles(math.rad(ROD_TILT), 0, 0)
 
-	CosmeticService.StyleRod(player, handle)
+	RodModel.Build(handle, rod, length)
+	CosmeticService.StyleRod(player, tool)
 	return tool
 end
 

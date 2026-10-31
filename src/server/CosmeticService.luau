@@ -9,6 +9,8 @@ local Fish = require(Shared.Fish)
 local Shop = require(Shared.Shop)
 local Remotes = require(Shared.Remotes)
 local Level = require(Shared.Level)
+local RodModel = require(Shared.RodModel)
+local Crown = require(Shared.Crown)
 
 local DataService = require(script.Parent.DataService)
 local ShopService = require(script.Parent.ShopService)
@@ -23,12 +25,11 @@ local function equippedItem(data, kind)
 	return id and data.cosmetics.owned[id] and Shop.CosmeticById[id] or nil
 end
 
-function CosmeticService.StyleRod(player, handle)
+function CosmeticService.StyleRod(player, tool)
 	local data = DataService.Get(player)
 	local skin = data and equippedItem(data, "rodSkin")
 	if skin then
-		handle.Color = skin.color
-		handle.Material = skin.material
+		RodModel.Skin(tool, skin.color, skin.material)
 	end
 end
 
@@ -103,19 +104,8 @@ local function applyToCharacter(player)
 	gui.Parent = head
 
 	if vip then
-		local crown = Instance.new("Part")
+		local crown = Crown.Build(head, VIP_GOLD)
 		crown.Name = "ReelCrown"
-		crown.Size = Vector3.new(1.1, 0.5, 1.1)
-		crown.Color = VIP_GOLD
-		crown.Material = Enum.Material.Neon
-		crown.CanCollide = false
-		crown.CanQuery = false
-		crown.Massless = true
-		local weld = Instance.new("Weld")
-		weld.Part0 = head
-		weld.Part1 = crown
-		weld.C0 = CFrame.new(0, head.Size.Y / 2 + 0.3, 0)
-		weld.Parent = crown
 		crown.Parent = character
 	end
 

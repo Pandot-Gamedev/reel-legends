@@ -20,6 +20,7 @@ Config.BiteWaitMax = 8
 Config.NibblesMax = 3 -- fake nibbles before the real bite (striking on one scares the fish)
 Config.HookGrace = 0.35 -- extra seconds allowed on the server for internet lag
 Config.CastCooldown = 1
+Config.CatchCardSeconds = 2.5 -- the "Caught!" card stays this long; no casting until it's gone
 Config.ShinyChance = 1 / 100
 Config.ShinyValueMultiplier = 3
 

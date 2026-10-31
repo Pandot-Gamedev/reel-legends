@@ -12,6 +12,7 @@ local Fishing = require(script.Fishing)
 local World = require(script.World)
 local Guide = require(script.Guide)
 local Community = require(script.Community)
+local MenuLock = require(script.MenuLock)
 
 local player = Players.LocalPlayer
 
@@ -59,4 +60,5 @@ Hud.Init(screenGui)
 Fishing.Init(fishingGui)
 World.Init()
 Guide.Init(screenGui)
+MenuLock.Init()
 
