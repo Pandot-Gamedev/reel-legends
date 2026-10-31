@@ -9,6 +9,7 @@ local EconomyService = require(script.EconomyService)
 local CosmeticService = require(script.CosmeticService)
 local FishingService = require(script.FishingService)
 local WorldService = require(script.WorldService)
+local CommunityService = require(script.CommunityService)
 
 MapBuilder.Build()
 
@@ -20,6 +21,12 @@ CosmeticService.Start()
 FishingService.Start()
 WorldService.Start()
 NpcService.Start()
+CommunityService.Start({
+	gameId = "fish",
+	rewards = { "community_rod", "community_title" },
+	equip = { rodSkin = "community_rod", title = "community_title" },
+	rewardText = "Crew Rod Skin and Pandot Crew title",
+})
 DataService.Start()
 
 print("[Hook a Mythic Fish!] Server ready")

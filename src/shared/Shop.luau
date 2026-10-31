@@ -40,6 +40,10 @@ Shop.EarnedTitles = {
 	{ id = "earned_frostbite", kind = "title", name = "Frostbite Master", text = "Frostbite Master", rule = "zoneBook", zone = "frostbite", color = Color3.fromRGB(170, 220, 255) },
 	{ id = "earned_legend", kind = "title", name = "Legend Hunter", text = "Legend Hunter", rule = "eventFish", color = Color3.fromRGB(255, 150, 0) },
 	{ id = "earned_reborn", kind = "title", name = "Reborn", text = "Reborn", rule = "rebirth", color = Color3.fromRGB(255, 90, 160) },
+
+	-- Free for joining our community (see Shared/OurGames and the Free Gift menu)
+	{ id = "community_rod", kind = "rodSkin", name = "Crew Rod Skin", community = true, color = Color3.fromRGB(0, 220, 200), material = Enum.Material.Neon },
+	{ id = "community_title", kind = "title", name = "Title: Pandot Crew", text = "Pandot Crew", community = true, color = Color3.fromRGB(0, 230, 210) },
 }
 
 Shop.PassById = {}

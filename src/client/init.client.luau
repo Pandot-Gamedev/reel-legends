@@ -11,6 +11,7 @@ local Hud = require(script.Hud)
 local Fishing = require(script.Fishing)
 local World = require(script.World)
 local Guide = require(script.Guide)
+local Community = require(script.Community)
 
 local player = Players.LocalPlayer
 
@@ -48,6 +49,12 @@ local fishingGui = UI.new("ScreenGui", {
 Notifications.Init(screenGui)
 CameraController.Init(fishingGui)
 Panels.Init(screenGui)
+Community.Init(screenGui, {
+	gameId = "fish",
+	rewardText = "the Crew Rod Skin and the Pandot Crew title",
+	key = Enum.KeyCode.G,
+})
+Panels.Community = Community.window
 Hud.Init(screenGui)
 Fishing.Init(fishingGui)
 World.Init()
