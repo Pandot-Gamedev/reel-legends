@@ -51,6 +51,7 @@ local phase = "idle" -- idle, casting, waiting, bite, fight, done
 local castId = nil
 local token = 0
 local closeFight = nil -- set while the fight box is on screen
+local catchCard = nil -- the "Caught!" card while it is on screen (no casting until it's gone)
 
 local sounds = {}
 local function sound(name, id, volume)
@@ -186,9 +187,15 @@ local function cast()
 	end)
 end
 
--- Click / tap with the rod out
+-- Click / tap with the rod out. Nothing happens while a menu is open.
 local function onActivated()
+	if UI.IsWindowOpen() then
+		return
+	end
 	if phase == "idle" then
+		if catchCard then
+			return
+		end
 		cast()
 	elseif phase == "waiting" or phase == "bite" then
 		Remotes.Hook:FireServer(castId)
@@ -307,8 +314,14 @@ local function startFight(id, params)
 			or input.KeyCode == Enum.KeyCode.ButtonA
 	end
 	table.insert(connections, UserInputService.InputBegan:Connect(function(input, processed)
-		if isReelInput(input) and not (processed and input.UserInputType == Enum.UserInputType.Touch) then
+		if isReelInput(input) and not UI.IsWindowOpen() and not (processed and input.UserInputType == Enum.UserInputType.Touch) then
 			holding = true
+		end
+	end))
+	-- Opening a menu lets go of the line
+	table.insert(connections, UI.WindowChanged:Connect(function(open)
+		if open then
+			holding = false
 		end
 	end))
 	table.insert(connections, UserInputService.InputEnded:Connect(function(input)
@@ -420,7 +433,7 @@ local function updateAim()
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local holding = character and character:FindFirstChild(ROD_NAME)
-	if phase ~= "idle" or not holding or not root then
+	if phase ~= "idle" or catchCard or UI.IsWindowOpen() or not holding or not root then
 		aimLabel.Visible = false
 		CameraController.SetCrosshairColor(nil)
 		return
@@ -471,6 +484,7 @@ local function showCatch(result)
 		BackgroundColor3 = T.Background,
 		Parent = screenGui,
 	}, { UI.corner(16), UI.stroke(rarity.color, 4), UI.padding(10), UI.list(4) })
+	catchCard = card
 	local top = "Caught!"
 	if result.isNew then
 		top = "NEW FISH! Added to your Fish Book"
@@ -488,11 +502,14 @@ local function showCatch(result)
 		Font = T.BodyFont,
 		Parent = card,
 	})
-	task.delay(2.5, function()
+	task.delay(Config.CatchCardSeconds, function()
 		local tween = TweenService:Create(card, TweenInfo.new(0.3), { BackgroundTransparency = 1 })
 		tween:Play()
 		tween.Completed:Wait()
 		card:Destroy()
+		if catchCard == card then
+			catchCard = nil
+		end
 	end)
 end
 

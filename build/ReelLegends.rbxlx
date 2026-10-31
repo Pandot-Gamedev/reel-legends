@@ -1,4 +1,4 @@
-<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Item class="ReplicatedStorage" referent="RBX00000011"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX00000010"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX00000001"><Properties><string name="Name">Bait</string><ProtectedString name="Source"><![CDATA[-- Bait goes on the hook before each cast. A fish that bites eats it, whether
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Item class="ReplicatedStorage" referent="RBX00000013"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX00000012"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX00000001"><Properties><string name="Name">Bait</string><ProtectedString name="Source"><![CDATA[-- Bait goes on the hook before each cast. A fish that bites eats it, whether
 -- you land the fish or not. Bait is bought with coins or made from fish you
 -- caught, never sold for Robux.
 --
@@ -131,7 +131,7 @@ return Bounties
 
 local Config = {}
 
-Config.GameName = "Reel Legends"
+Config.GameName = "Hook a Mythic Fish!"
 
 -- Saving
 Config.DataStoreName = "PlayerData_v1"
@@ -149,6 +149,7 @@ Config.BiteWaitMax = 8
 Config.NibblesMax = 3 -- fake nibbles before the real bite (striking on one scares the fish)
 Config.HookGrace = 0.35 -- extra seconds allowed on the server for internet lag
 Config.CastCooldown = 1
+Config.CatchCardSeconds = 2.5 -- the "Caught!" card stays this long; no casting until it's gone
 Config.ShinyChance = 1 / 100
 Config.ShinyValueMultiplier = 3
 
@@ -182,7 +183,91 @@ function Config.SellMultiplier(rebirths)
 end
 
 return Config
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000004"><Properties><string name="Name">Events</string><ProtectedString name="Source"><![CDATA[-- Weekly legendary fish and rotating weather. Both are worked out from the
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000004"><Properties><string name="Name">Crown</string><ProtectedString name="Source"><![CDATA[-- A real-looking crown for the top of a head: a gold band with jewels, pointed
+-- tips with pearls, and a red velvet cap with a little gold cross on top.
+-- Crown.Build(head, gold) returns a Model whose parts are welded to the head.
+
+local Crown = {}
+
+local SEGMENTS = 8
+local VELVET = Color3.fromRGB(165, 20, 45)
+local PEARL = Color3.fromRGB(255, 250, 240)
+local JEWELS = {
+	Color3.fromRGB(230, 30, 60), -- ruby
+	Color3.fromRGB(40, 110, 255), -- sapphire
+	Color3.fromRGB(30, 200, 100), -- emerald
+	Color3.fromRGB(40, 110, 255),
+}
+
+function Crown.Build(head, gold)
+	gold = gold or Color3.fromRGB(255, 200, 40)
+	local model = Instance.new("Model")
+	model.Name = "Crown"
+
+	local function add(name, className, size, offset, color, material, shape)
+		local part = Instance.new(className)
+		part.Name = name
+		if shape then
+			part.Shape = shape
+		end
+		part.Size = size
+		part.Color = color
+		part.Material = material or Enum.Material.Metal
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		part.CanCollide = false
+		part.CanQuery = false
+		part.CanTouch = false
+		part.Massless = true
+		part.CastShadow = false
+		part.CFrame = head.CFrame * offset
+		local weld = Instance.new("Weld")
+		weld.Part0 = head
+		weld.Part1 = part
+		weld.C0 = offset
+		weld.Parent = part
+		part.Parent = model
+		return part
+	end
+
+	local radius = math.clamp(head.Size.X * 0.38, 0.35, 0.6)
+	local bandHeight = radius * 0.6
+	local thick = 0.08
+	local bandY = head.Size.Y / 2 + bandHeight / 2 - 0.08
+	local width = 2 * (radius + thick / 2) * math.tan(math.pi / SEGMENTS)
+
+	for index = 1, SEGMENTS do
+		local angle = (index - 1) * 2 * math.pi / SEGMENTS
+		local at = CFrame.new(0, bandY, 0) * CFrame.Angles(0, angle, 0) * CFrame.new(0, 0, radius)
+		add("Band", "Part", Vector3.new(width, bandHeight, thick), at, gold)
+		add("Rim", "Part", Vector3.new(width, 0.05, thick + 0.04), at * CFrame.new(0, -bandHeight / 2 + 0.025, 0), gold)
+		add("Rim", "Part", Vector3.new(width, 0.05, thick + 0.04), at * CFrame.new(0, bandHeight / 2 - 0.025, 0), gold)
+		add("Jewel", "Part", Vector3.new(0.13, 0.13, 0.13), at * CFrame.new(0, 0, thick / 2), JEWELS[(index - 1) % #JEWELS + 1], Enum.Material.Neon, Enum.PartType.Ball)
+
+		-- A point on top of each segment: two wedges make a triangle.
+		-- Tall points (with a pearl) and short points take turns.
+		local tall = index % 2 == 1
+		local height = radius * (tall and 0.85 or 0.5)
+		local base = at * CFrame.new(0, bandHeight / 2 + height / 2, 0)
+		add("Point", "WedgePart", Vector3.new(0.05, height, width / 2), base * CFrame.new(width / 4, 0, 0) * CFrame.Angles(0, -math.pi / 2, 0), gold)
+		add("Point", "WedgePart", Vector3.new(0.05, height, width / 2), base * CFrame.new(-width / 4, 0, 0) * CFrame.Angles(0, math.pi / 2, 0), gold)
+		local tipSize = tall and 0.13 or 0.08
+		add("Tip", "Part", Vector3.new(tipSize, tipSize, tipSize), at * CFrame.new(0, bandHeight / 2 + height, 0), tall and PEARL or gold, tall and Enum.Material.SmoothPlastic or Enum.Material.Metal, Enum.PartType.Ball)
+	end
+
+	-- Velvet cap inside the band, with a gold ball and cross on top
+	local capSize = radius * 1.85
+	add("Velvet", "Part", Vector3.new(capSize, capSize, capSize), CFrame.new(0, bandY - 0.04, 0), VELVET, Enum.Material.Fabric, Enum.PartType.Ball)
+	local capTop = bandY - 0.04 + capSize / 2
+	add("Orb", "Part", Vector3.new(0.16, 0.16, 0.16), CFrame.new(0, capTop + 0.05, 0), gold, Enum.Material.Metal, Enum.PartType.Ball)
+	add("Cross", "Part", Vector3.new(0.05, 0.24, 0.05), CFrame.new(0, capTop + 0.23, 0), gold)
+	add("Cross", "Part", Vector3.new(0.16, 0.05, 0.05), CFrame.new(0, capTop + 0.27, 0), gold)
+
+	return model
+end
+
+return Crown
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000005"><Properties><string name="Name">Events</string><ProtectedString name="Source"><![CDATA[-- Weekly legendary fish and rotating weather. Both are worked out from the
 -- clock, so every server (and every player's screen) agrees without talking.
 
 local Workspace = game:GetService("Workspace")
@@ -236,7 +321,7 @@ function Events.GetWeather(now)
 end
 
 return Events
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000005"><Properties><string name="Name">Fight</string><ProtectedString name="Source"><![CDATA[-- The reeling fight, shared by server and player so both agree on the rules.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000006"><Properties><string name="Name">Fight</string><ProtectedString name="Source"><![CDATA[-- The reeling fight, shared by server and player so both agree on the rules.
 --
 -- Hold to reel: the catch bar fills, but line tension rises.
 -- Let go: tension drops, but the fish pulls the catch bar back.
@@ -327,7 +412,7 @@ function Fight.NewState(params, random)
 end
 
 return Fight
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000006"><Properties><string name="Name">Fish</string><ProtectedString name="Source"><![CDATA[-- Every fish in the game. To add a fish, copy a line and give it a new unique id.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000007"><Properties><string name="Name">Fish</string><ProtectedString name="Source"><![CDATA[-- Every fish in the game. To add a fish, copy a line and give it a new unique id.
 -- value = coins for an average-weight fish. weight = {min, max} in kg.
 
 local Fish = {}
@@ -419,7 +504,7 @@ for _, fish in ipairs(Fish.List) do
 end
 
 return Fish
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000007"><Properties><string name="Name">FishModel</string><ProtectedString name="Source"><![CDATA[-- Builds a simple 3D fish out of parts. Used when a player holds up a catch
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000008"><Properties><string name="Name">FishModel</string><ProtectedString name="Source"><![CDATA[-- Builds a simple 3D fish out of parts. Used when a player holds up a catch
 -- and for the fish that jump out of the water.
 
 local Fish = require(script.Parent.Fish)
@@ -509,7 +594,7 @@ function FishModel.Build(fishId, weight, shiny)
 end
 
 return FishModel
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000008"><Properties><string name="Name">Format</string><ProtectedString name="Source"><![CDATA[-- Small helpers for showing numbers and times.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000009"><Properties><string name="Name">Format</string><ProtectedString name="Source"><![CDATA[-- Small helpers for showing numbers and times.
 
 local Format = {}
 
@@ -557,7 +642,7 @@ function Format.Weight(kg)
 end
 
 return Format
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000009"><Properties><string name="Name">Level</string><ProtectedString name="Source"><![CDATA[-- Angler level. Every catch gives XP (more for rarer fish and new species).
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000A"><Properties><string name="Name">Level</string><ProtectedString name="Source"><![CDATA[-- Angler level. Every catch gives XP (more for rarer fish and new species).
 -- Your level shows above your head and pays a coin reward each time it goes up.
 
 local Fish = require(script.Parent.Fish)
@@ -605,7 +690,7 @@ function Level.XpForCatch(fishId, isNew)
 end
 
 return Level
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000A"><Properties><string name="Name">Market</string><ProtectedString name="Source"><![CDATA[-- Fish Market prices. Every 30 minutes one fish per zone is "in demand" and
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000B"><Properties><string name="Name">Market</string><ProtectedString name="Source"><![CDATA[-- Fish Market prices. Every 30 minutes one fish per zone is "in demand" and
 -- sells for double, so holding on to the right fish can pay off.
 
 local Config = require(script.Parent.Config)
@@ -649,7 +734,7 @@ function Market.Price(entry, rebirths, hot)
 end
 
 return Market
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000B"><Properties><string name="Name">Remotes</string><ProtectedString name="Source"><![CDATA[-- All the messages between server and players. The server creates them;
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000C"><Properties><string name="Name">Remotes</string><ProtectedString name="Source"><![CDATA[-- All the messages between server and players. The server creates them;
 -- players wait for them to appear.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -709,22 +794,164 @@ for _, name in ipairs(FUNCTIONS) do
 end
 
 return Remotes
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000C"><Properties><string name="Name">Rods</string><ProtectedString name="Source"><![CDATA[-- Rods are bought with in-game coins only (never Robux).
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000D"><Properties><string name="Name">RodModel</string><ProtectedString name="Source"><![CDATA[-- Builds how a fishing rod looks: cork grips, a reel with line on its spool and
+-- a crank, a tapered pole with thread bands, line guides and a metal tip.
+-- The tool's Handle is an invisible stick the length of the rod; every visible
+-- piece is welded to it, so the grip and the line's Tip never move.
+--
+-- Handle space: +Y runs from the butt (-length / 2) to the tip (+length / 2).
+-- SIDE is the side the reel and guides hang on (under the rod in the hand).
+
+local RodModel = {}
+
+local SIDE = Vector3.new(0, 0, -1)
+local ACROSS = Vector3.new(1, 0, 0) -- the crank sticks out this way
+local UPRIGHT = CFrame.Angles(0, 0, math.rad(90)) -- turns a cylinder to run along Y
+
+local CORK = Color3.fromRGB(196, 150, 98)
+local METAL = Color3.fromRGB(190, 192, 200)
+local DARK_METAL = Color3.fromRGB(45, 45, 50)
+local LINE = Color3.fromRGB(245, 245, 245)
+
+local function piece(handle, name, shape, size, offset, color, material)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Shape = shape
+	part.Size = size
+	part.Color = color
+	part.Material = material or Enum.Material.SmoothPlastic
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.Massless = true
+	part.CastShadow = false
+	part.CFrame = handle.CFrame * offset
+	local weld = Instance.new("Weld")
+	weld.Part0 = handle
+	weld.Part1 = part
+	weld.C0 = offset
+	weld.Parent = part
+	part.Parent = handle.Parent
+	return part
+end
+
+-- A cylinder along the rod from y0 to y1, centered `out` studs to the side
+local function tube(handle, name, y0, y1, diameter, color, material, out)
+	local center = (out or Vector3.zero) + Vector3.new(0, (y0 + y1) / 2, 0)
+	return piece(handle, name, Enum.PartType.Cylinder, Vector3.new(y1 - y0, diameter, diameter), CFrame.new(center) * UPRIGHT, color, material)
+end
+
+function RodModel.Build(handle, rod, length)
+	local bottom = -length / 2
+	local top = length / 2
+	local material = rod.material or Enum.Material.SmoothPlastic
+	local wrap = rod.wrap or Color3.fromRGB(40, 40, 40)
+	local reelColor = rod.reel or DARK_METAL
+
+	-- Handle end: butt cap, rear cork grip, reel seat, fore grip
+	tube(handle, "ButtCap", bottom, bottom + 0.18, 0.32, DARK_METAL, Enum.Material.Metal)
+	tube(handle, "RearGrip", bottom + 0.18, bottom + 1.35, 0.27, CORK, Enum.Material.Wood)
+	tube(handle, "ReelSeat", bottom + 1.35, bottom + 1.8, 0.21, reelColor, Enum.Material.Metal)
+	tube(handle, "SeatRing", bottom + 1.33, bottom + 1.41, 0.25, METAL, Enum.Material.Metal)
+	tube(handle, "SeatRing", bottom + 1.74, bottom + 1.82, 0.25, METAL, Enum.Material.Metal)
+	tube(handle, "ForeGrip", bottom + 1.8, bottom + 2.3, 0.23, CORK, Enum.Material.Wood)
+
+	-- The pole, thinner toward the tip, with thread bands at each joint.
+	-- Parts marked RodBlank take the rod skin's color.
+	local sections = {
+		{ bottom + 2.3, bottom + 4.4, 0.15 },
+		{ bottom + 4.4, bottom + 6.0, 0.11 },
+		{ bottom + 6.0, top - 0.04, 0.075 },
+	}
+	for index, section in ipairs(sections) do
+		local blank = tube(handle, "Blank", section[1], section[2], section[3], rod.color, material)
+		blank:SetAttribute("RodBlank", true)
+		if rod.glow then
+			local light = Instance.new("PointLight")
+			light.Color = wrap
+			light.Range = 4
+			light.Brightness = 0.6
+			light.Parent = blank
+		end
+		local band = tube(handle, "Wrap", section[1] - 0.02, section[1] + (index == 1 and 0.2 or 0.12), section[3] + 0.045, wrap, rod.glow and Enum.Material.Neon or Enum.Material.SmoothPlastic)
+		band:SetAttribute("RodWrap", true)
+	end
+	piece(handle, "TipTop", Enum.PartType.Ball, Vector3.new(0.1, 0.1, 0.1), CFrame.new(0, top - 0.03, 0), METAL, Enum.Material.Metal)
+
+	-- Line guides: a little foot on the pole holding a ring the line runs through
+	local guides = { { bottom + 3.4, 0.24, 0.15 }, { bottom + 4.9, 0.17, 0.12 }, { bottom + 5.9, 0.13, 0.1 }, { top - 0.75, 0.1, 0.08 } }
+	for _, guide in ipairs(guides) do
+		local y, ring, out = guide[1], guide[2], guide[3]
+		piece(handle, "GuideFoot", Enum.PartType.Block, Vector3.new(0.035, 0.1, out), CFrame.new(SIDE * (out / 2) + Vector3.new(0, y, 0)), DARK_METAL, Enum.Material.Metal)
+		tube(handle, "GuideRing", y - 0.015, y + 0.015, ring, METAL, Enum.Material.Metal, SIDE * (out + ring / 2))
+	end
+
+	-- Spinning reel hanging under the reel seat
+	local seatY = bottom + 1.57
+	local reelOut = 0.5
+	piece(handle, "ReelStem", Enum.PartType.Block, Vector3.new(0.07, 0.3, reelOut - 0.1), CFrame.new(SIDE * (reelOut / 2) + Vector3.new(0, seatY, 0)), reelColor, Enum.Material.Metal)
+	local reelCenter = SIDE * reelOut + Vector3.new(0, seatY, 0)
+	piece(handle, "ReelBody", Enum.PartType.Cylinder, Vector3.new(0.24, 0.36, 0.36), CFrame.new(reelCenter - Vector3.new(0, 0.08, 0)), reelColor, Enum.Material.Metal)
+	tube(handle, "SpoolBack", seatY + 0.1, seatY + 0.16, 0.34, METAL, Enum.Material.Metal, SIDE * reelOut)
+	tube(handle, "SpoolLine", seatY + 0.16, seatY + 0.34, 0.29, LINE, Enum.Material.SmoothPlastic, SIDE * reelOut)
+	tube(handle, "SpoolFront", seatY + 0.34, seatY + 0.42, 0.33, METAL, Enum.Material.Metal, SIDE * reelOut)
+	local arm = reelCenter - Vector3.new(0, 0.08, 0) + ACROSS * 0.3
+	piece(handle, "CrankArm", Enum.PartType.Block, Vector3.new(0.4, 0.06, 0.06), CFrame.new(arm), METAL, Enum.Material.Metal)
+	piece(handle, "CrankKnob", Enum.PartType.Cylinder, Vector3.new(0.18, 0.13, 0.13), CFrame.new(arm + ACROSS * 0.2 + SIDE * 0.09) * CFrame.Angles(0, math.rad(90), 0), wrap)
+
+	-- Line from the spool up to the tip
+	local from = Instance.new("Attachment")
+	from.Name = "SpoolPoint"
+	from.Position = SIDE * reelOut + Vector3.new(0, seatY + 0.38, 0)
+	from.Parent = handle
+	local to = Instance.new("Attachment")
+	to.Name = "TipPoint"
+	to.Position = Vector3.new(0, top, 0)
+	to.Parent = handle
+	local beam = Instance.new("Beam")
+	beam.Name = "RodLine"
+	beam.Attachment0 = from
+	beam.Attachment1 = to
+	beam.Width0 = 0.025
+	beam.Width1 = 0.02
+	beam.FaceCamera = true
+	beam.Color = ColorSequence.new(LINE)
+	beam.LightInfluence = 1
+	beam.Segments = 1
+	beam.Parent = handle
+end
+
+-- Recolors the pole for a rod skin
+function RodModel.Skin(tool, color, material)
+	for _, part in ipairs(tool:GetDescendants()) do
+		if part:IsA("BasePart") and part:GetAttribute("RodBlank") then
+			part.Color = color
+			part.Material = material
+		end
+	end
+end
+
+return RodModel
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000E"><Properties><string name="Name">Rods</string><ProtectedString name="Source"><![CDATA[-- Rods are bought with in-game coins only (never Robux).
 -- luck: multiplies the chance of Rare and better fish
 -- speed: multiplies the wait for a bite (lower is faster)
 -- control: reel faster with less line tension during the fight
+-- color/material: the rod's blank (the long pole), wrap: the thread bands and
+-- reel knob, reel: the reel's body. These are looks only.
 
 local Rods = {}
 
 Rods.List = {
-	{ id = "twig", name = "Twig Rod", price = 0, luck = 1.0, speed = 1.0, control = 0.0, color = Color3.fromRGB(140, 100, 60) },
-	{ id = "bamboo", name = "Bamboo Rod", price = 400, luck = 1.1, speed = 0.95, control = 0.02, color = Color3.fromRGB(190, 180, 90) },
-	{ id = "fiberglass", name = "Fiberglass Rod", price = 2000, luck = 1.2, speed = 0.9, control = 0.04, color = Color3.fromRGB(230, 230, 230) },
-	{ id = "carbon", name = "Carbon Rod", price = 8000, luck = 1.35, speed = 0.85, control = 0.06, color = Color3.fromRGB(40, 40, 45) },
-	{ id = "mangrove", name = "Mangrove Rod", price = 30000, luck = 1.5, speed = 0.8, control = 0.08, color = Color3.fromRGB(70, 120, 60) },
-	{ id = "glacier", name = "Glacier Rod", price = 120000, luck = 1.75, speed = 0.72, control = 0.1, color = Color3.fromRGB(150, 220, 255) },
-	{ id = "aurora", name = "Aurora Rod", price = 450000, luck = 2.0, speed = 0.65, control = 0.12, color = Color3.fromRGB(120, 255, 200) },
-	{ id = "leviathan", name = "Leviathan Rod", price = 1500000, luck = 2.5, speed = 0.55, control = 0.15, color = Color3.fromRGB(60, 40, 140), requiresRebirths = 1 },
+	{ id = "twig", name = "Twig Rod", price = 0, luck = 1.0, speed = 1.0, control = 0.0, color = Color3.fromRGB(140, 100, 60), material = Enum.Material.Wood, wrap = Color3.fromRGB(90, 60, 35), reel = Color3.fromRGB(120, 120, 125) },
+	{ id = "bamboo", name = "Bamboo Rod", price = 400, luck = 1.1, speed = 0.95, control = 0.02, color = Color3.fromRGB(190, 180, 90), material = Enum.Material.Wood, wrap = Color3.fromRGB(60, 120, 50), reel = Color3.fromRGB(150, 150, 155) },
+	{ id = "fiberglass", name = "Fiberglass Rod", price = 2000, luck = 1.2, speed = 0.9, control = 0.04, color = Color3.fromRGB(230, 230, 230), material = Enum.Material.SmoothPlastic, wrap = Color3.fromRGB(210, 50, 50), reel = Color3.fromRGB(70, 70, 80) },
+	{ id = "carbon", name = "Carbon Rod", price = 8000, luck = 1.35, speed = 0.85, control = 0.06, color = Color3.fromRGB(40, 40, 45), material = Enum.Material.SmoothPlastic, wrap = Color3.fromRGB(210, 210, 220), reel = Color3.fromRGB(30, 30, 35) },
+	{ id = "mangrove", name = "Mangrove Rod", price = 30000, luck = 1.5, speed = 0.8, control = 0.08, color = Color3.fromRGB(70, 120, 60), material = Enum.Material.SmoothPlastic, wrap = Color3.fromRGB(240, 190, 60), reel = Color3.fromRGB(45, 70, 40) },
+	{ id = "glacier", name = "Glacier Rod", price = 120000, luck = 1.75, speed = 0.72, control = 0.1, color = Color3.fromRGB(150, 220, 255), material = Enum.Material.Ice, wrap = Color3.fromRGB(245, 250, 255), reel = Color3.fromRGB(70, 120, 170) },
+	{ id = "aurora", name = "Aurora Rod", price = 450000, luck = 2.0, speed = 0.65, control = 0.12, color = Color3.fromRGB(120, 255, 200), material = Enum.Material.SmoothPlastic, wrap = Color3.fromRGB(190, 110, 255), reel = Color3.fromRGB(40, 60, 90) },
+	{ id = "leviathan", name = "Leviathan Rod", price = 1500000, luck = 2.5, speed = 0.55, control = 0.15, color = Color3.fromRGB(60, 40, 140), material = Enum.Material.SmoothPlastic, wrap = Color3.fromRGB(255, 200, 40), reel = Color3.fromRGB(25, 15, 50), glow = true, requiresRebirths = 1 },
 }
 
 Rods.ById = {}
@@ -736,7 +963,7 @@ end
 Rods.Default = "twig"
 
 return Rods
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000D"><Properties><string name="Name">Shop</string><ProtectedString name="Source"><![CDATA[-- Everything sold for Robux. Nothing here changes which fish you catch or how
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">Shop</string><ProtectedString name="Source"><![CDATA[-- Everything sold for Robux. Nothing here changes which fish you catch or how
 -- many coins you earn: only looks and time-savers.
 --
 -- HOW TO FILL IN THE IDS (see docs/SETUP_GUIDE.md, step 5):
@@ -799,7 +1026,7 @@ for _, item in ipairs(Shop.EarnedTitles) do
 end
 
 return Shop
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000E"><Properties><string name="Name">Tutorial</string><ProtectedString name="Source"><![CDATA[-- Old Pete's first-day guide. Each step points at a place in the world (a part
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000010"><Properties><string name="Name">Tutorial</string><ProtectedString name="Source"><![CDATA[-- Old Pete's first-day guide. Each step points at a place in the world (a part
 -- with the matching "GuideTarget" attribute) and finishes on a game event.
 
 local Tutorial = {}
@@ -817,7 +1044,7 @@ Tutorial.RewardCoins = 250
 Tutorial.RewardBait = { id = "worms", amount = 10 }
 
 return Tutorial
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000000F"><Properties><string name="Name">Zones</string><ProtectedString name="Source"><![CDATA[-- Fishing zones. Zones are unlocked with in-game coins.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000011"><Properties><string name="Name">Zones</string><ProtectedString name="Source"><![CDATA[-- Fishing zones. Zones are unlocked with in-game coins.
 
 local Zones = {}
 
@@ -836,7 +1063,7 @@ end
 Zones.Default = "shallows"
 
 return Zones
-]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX0000001C"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX0000001B"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[-- Reel Legends server. Starts every service in order.
+]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX0000001E"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX0000001D"><Properties><string name="Name">Server</string><ProtectedString name="Source"><![CDATA[-- Hook a Mythic Fish! server. Starts every service in order.
 
 local MapBuilder = require(script.MapBuilder)
 local DataService = require(script.DataService)
@@ -860,8 +1087,8 @@ WorldService.Start()
 NpcService.Start()
 DataService.Start()
 
-print("[Reel Legends] Server ready")
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX00000012"><Properties><string name="Name">CosmeticService</string><ProtectedString name="Source"><![CDATA[-- Shows each player's name tag (name, angler level, title, VIP) and cosmetics:
+print("[Hook a Mythic Fish!] Server ready")
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">CosmeticService</string><ProtectedString name="Source"><![CDATA[-- Shows each player's name tag (name, angler level, title, VIP) and cosmetics:
 -- trails, rod skins and VIP extras.
 -- Also hands out free titles players earn by playing.
 
@@ -872,6 +1099,8 @@ local Fish = require(Shared.Fish)
 local Shop = require(Shared.Shop)
 local Remotes = require(Shared.Remotes)
 local Level = require(Shared.Level)
+local RodModel = require(Shared.RodModel)
+local Crown = require(Shared.Crown)
 
 local DataService = require(script.Parent.DataService)
 local ShopService = require(script.Parent.ShopService)
@@ -886,12 +1115,11 @@ local function equippedItem(data, kind)
 	return id and data.cosmetics.owned[id] and Shop.CosmeticById[id] or nil
 end
 
-function CosmeticService.StyleRod(player, handle)
+function CosmeticService.StyleRod(player, tool)
 	local data = DataService.Get(player)
 	local skin = data and equippedItem(data, "rodSkin")
 	if skin then
-		handle.Color = skin.color
-		handle.Material = skin.material
+		RodModel.Skin(tool, skin.color, skin.material)
 	end
 end
 
@@ -966,19 +1194,8 @@ local function applyToCharacter(player)
 	gui.Parent = head
 
 	if vip then
-		local crown = Instance.new("Part")
+		local crown = Crown.Build(head, VIP_GOLD)
 		crown.Name = "ReelCrown"
-		crown.Size = Vector3.new(1.1, 0.5, 1.1)
-		crown.Color = VIP_GOLD
-		crown.Material = Enum.Material.Neon
-		crown.CanCollide = false
-		crown.CanQuery = false
-		crown.Massless = true
-		local weld = Instance.new("Weld")
-		weld.Part0 = head
-		weld.Part1 = crown
-		weld.C0 = CFrame.new(0, head.Size.Y / 2 + 0.3, 0)
-		weld.Parent = crown
 		crown.Parent = character
 	end
 
@@ -1084,7 +1301,7 @@ function CosmeticService.Start()
 end
 
 return CosmeticService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000013"><Properties><string name="Name">DataService</string><ProtectedString name="Source"><![CDATA[-- Loads, saves and hands out each player's save data.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000015"><Properties><string name="Name">DataService</string><ProtectedString name="Source"><![CDATA[-- Loads, saves and hands out each player's save data.
 -- Other scripts change data with DataService.Update(player, function(data) ... end)
 -- so the player's screen and leaderboard always refresh afterwards.
 
@@ -1393,7 +1610,7 @@ function DataService.Start()
 end
 
 return DataService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000014"><Properties><string name="Name">EconomyService</string><ProtectedString name="Source"><![CDATA[-- Coins: the Fish Market, bait, bounties, rods, zones, rebirths and daily
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000016"><Properties><string name="Name">EconomyService</string><ProtectedString name="Source"><![CDATA[-- Coins: the Fish Market, bait, bounties, rods, zones, rebirths and daily
 -- rewards, plus the menu buttons players press (all go through the "Action" remote).
 
 local Workspace = game:GetService("Workspace")
@@ -1858,7 +2075,7 @@ function EconomyService.Start()
 end
 
 return EconomyService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000015"><Properties><string name="Name">FishingService</string><ProtectedString name="Source"><![CDATA[-- Casting, nibbles, bites, hooking and catches. The server decides which fish
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000017"><Properties><string name="Name">FishingService</string><ProtectedString name="Source"><![CDATA[-- Casting, nibbles, bites, hooking and catches. The server decides which fish
 -- bites and checks the timing, so players can't pick their own fish. The
 -- reeling fight runs on the player's screen using the shared Fight rules.
 --
@@ -1880,6 +2097,7 @@ local Events = require(Shared.Events)
 local Bait = require(Shared.Bait)
 local Fight = require(Shared.Fight)
 local FishModel = require(Shared.FishModel)
+local RodModel = require(Shared.RodModel)
 local Level = require(Shared.Level)
 local Format = require(Shared.Format)
 local Remotes = require(Shared.Remotes)
@@ -2274,6 +2492,8 @@ local function onReel(player, castId, outcome)
 		return
 	end
 	clearCast(player)
+	-- No new cast until the "Caught!" card has gone from the player's screen
+	lastCast[player] = os.clock() + Config.CatchCardSeconds - Config.CastCooldown
 
 	local fish = Fish.ById[cast.catch.id]
 	local caught = cast.catch
@@ -2371,6 +2591,7 @@ local function buildRod(player)
 	handle.Massless = true
 	handle.Color = rod.color
 	handle.Material = Enum.Material.SmoothPlastic
+	handle.Transparency = 1 -- the rod's look is built from welded pieces (RodModel)
 	handle.Parent = tool
 
 	local tip = Instance.new("Attachment")
@@ -2383,7 +2604,8 @@ local function buildRod(player)
 	local ROD_TILT = 50
 	tool.Grip = CFrame.new(0, -length / 2 + 0.6, 0) * CFrame.Angles(math.rad(ROD_TILT), 0, 0)
 
-	CosmeticService.StyleRod(player, handle)
+	RodModel.Build(handle, rod, length)
+	CosmeticService.StyleRod(player, tool)
 	return tool
 end
 
@@ -2484,7 +2706,7 @@ function FishingService.Start()
 end
 
 return FishingService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000016"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- Builds a simple starter world (hub island + 3 fishing islands) when the place
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- Builds a simple starter world (hub island + 3 fishing islands) when the place
 -- has no folder called "Map" in Workspace. That means the game is playable the
 -- moment you press Play. To use your own scenery later, see docs/SETUP_GUIDE.md:
 -- the game only cares about parts with these attributes:
@@ -2977,7 +3199,7 @@ function MapBuilder.Build()
 end
 
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000017"><Properties><string name="Name">NpcService</string><ProtectedString name="Source"><![CDATA[-- Shopkeepers and Old Pete. They stand on parts with an "Npc" attribute
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">NpcService</string><ProtectedString name="Source"><![CDATA[-- Shopkeepers and Old Pete. They stand on parts with an "Npc" attribute
 -- (MapBuilder places them at each stall) and face the way that part faces.
 
 local Players = game:GetService("Players")
@@ -3089,7 +3311,7 @@ function NpcService.Start()
 end
 
 return NpcService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000018"><Properties><string name="Name">ShopService</string><ProtectedString name="Source"><![CDATA[-- Robux purchases: game passes (VIP, Auto Sell, Big Bag, Teleporter) and
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">ShopService</string><ProtectedString name="Source"><![CDATA[-- Robux purchases: game passes (VIP, Auto Sell, Big Bag, Teleporter) and
 -- cosmetic developer products.
 
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -3187,7 +3409,7 @@ function ShopService.Start()
 end
 
 return ShopService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000019"><Properties><string name="Name">TutorialService</string><ProtectedString name="Source"><![CDATA[-- Moves players through Old Pete's first-day guide (see Shared/Tutorial).
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001B"><Properties><string name="Name">TutorialService</string><ProtectedString name="Source"><![CDATA[-- Moves players through Old Pete's first-day guide (see Shared/Tutorial).
 -- Other services call TutorialService.Event(player, "Cast") etc.
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
@@ -3241,7 +3463,7 @@ function TutorialService.Start()
 end
 
 return TutorialService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001A"><Properties><string name="Name">WorldService</string><ProtectedString name="Source"><![CDATA[-- Connects the world to the game: shop and market prompts, zone gates,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001C"><Properties><string name="Name">WorldService</string><ProtectedString name="Source"><![CDATA[-- Connects the world to the game: shop and market prompts, zone gates,
 -- the global leaderboard board and the weekly event board.
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -3416,7 +3638,7 @@ function WorldService.Start()
 end
 
 return WorldService
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX00000028"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX00000027"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000026"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[-- Reel Legends player script. Builds the screen and starts fishing controls.
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX0000002B"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX0000002A"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX00000029"><Properties><string name="Name">Client</string><ProtectedString name="Source"><![CDATA[-- Hook a Mythic Fish! player script. Builds the screen and starts fishing controls.
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -3429,6 +3651,7 @@ local Hud = require(script.Hud)
 local Fishing = require(script.Fishing)
 local World = require(script.World)
 local Guide = require(script.Guide)
+local MenuLock = require(script.MenuLock)
 
 local player = Players.LocalPlayer
 
@@ -3470,8 +3693,9 @@ Hud.Init(screenGui)
 Fishing.Init(fishingGui)
 World.Init()
 Guide.Init(screenGui)
+MenuLock.Init()
 
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX0000001D"><Properties><string name="Name">CameraController</string><ProtectedString name="Source"><![CDATA[-- Over-the-shoulder camera for mouse players: moving the mouse turns the camera
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX0000001F"><Properties><string name="Name">CameraController</string><ProtectedString name="Source"><![CDATA[-- Over-the-shoulder camera for mouse players: moving the mouse turns the camera
 -- and your character, like most action games. The mouse is free again whenever
 -- a menu is open, or when you press Alt (press again to lock it).
 -- Phones and tablets keep Roblox's normal touch camera.
@@ -3637,7 +3861,7 @@ function CameraController.Init(screenGui)
 end
 
 return CameraController
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001E"><Properties><string name="Name">Fishing</string><ProtectedString name="Source"><![CDATA[-- Fishing on the player's screen.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000020"><Properties><string name="Name">Fishing</string><ProtectedString name="Source"><![CDATA[-- Fishing on the player's screen.
 --   1. Equip the rod and click the water to cast. The dot in the middle of the
 --      screen tells you if you can fish where you're aiming. Walking reels in.
 --   2. Watch the bobber. Little nibbles are fish testing the bait: don't strike!
@@ -3690,6 +3914,7 @@ local phase = "idle" -- idle, casting, waiting, bite, fight, done
 local castId = nil
 local token = 0
 local closeFight = nil -- set while the fight box is on screen
+local catchCard = nil -- the "Caught!" card while it is on screen (no casting until it's gone)
 
 local sounds = {}
 local function sound(name, id, volume)
@@ -3825,9 +4050,15 @@ local function cast()
 	end)
 end
 
--- Click / tap with the rod out
+-- Click / tap with the rod out. Nothing happens while a menu is open.
 local function onActivated()
+	if UI.IsWindowOpen() then
+		return
+	end
 	if phase == "idle" then
+		if catchCard then
+			return
+		end
 		cast()
 	elseif phase == "waiting" or phase == "bite" then
 		Remotes.Hook:FireServer(castId)
@@ -3946,8 +4177,14 @@ local function startFight(id, params)
 			or input.KeyCode == Enum.KeyCode.ButtonA
 	end
 	table.insert(connections, UserInputService.InputBegan:Connect(function(input, processed)
-		if isReelInput(input) and not (processed and input.UserInputType == Enum.UserInputType.Touch) then
+		if isReelInput(input) and not UI.IsWindowOpen() and not (processed and input.UserInputType == Enum.UserInputType.Touch) then
 			holding = true
+		end
+	end))
+	-- Opening a menu lets go of the line
+	table.insert(connections, UI.WindowChanged:Connect(function(open)
+		if open then
+			holding = false
 		end
 	end))
 	table.insert(connections, UserInputService.InputEnded:Connect(function(input)
@@ -4059,7 +4296,7 @@ local function updateAim()
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	local holding = character and character:FindFirstChild(ROD_NAME)
-	if phase ~= "idle" or not holding or not root then
+	if phase ~= "idle" or catchCard or UI.IsWindowOpen() or not holding or not root then
 		aimLabel.Visible = false
 		CameraController.SetCrosshairColor(nil)
 		return
@@ -4110,6 +4347,7 @@ local function showCatch(result)
 		BackgroundColor3 = T.Background,
 		Parent = screenGui,
 	}, { UI.corner(16), UI.stroke(rarity.color, 4), UI.padding(10), UI.list(4) })
+	catchCard = card
 	local top = "Caught!"
 	if result.isNew then
 		top = "NEW FISH! Added to your Fish Book"
@@ -4127,11 +4365,14 @@ local function showCatch(result)
 		Font = T.BodyFont,
 		Parent = card,
 	})
-	task.delay(2.5, function()
+	task.delay(Config.CatchCardSeconds, function()
 		local tween = TweenService:Create(card, TweenInfo.new(0.3), { BackgroundTransparency = 1 })
 		tween:Play()
 		tween.Completed:Wait()
 		card:Destroy()
+		if catchCard == card then
+			catchCard = nil
+		end
 	end)
 end
 
@@ -4235,7 +4476,7 @@ function Fishing.Init(gui)
 end
 
 return Fishing
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX0000001F"><Properties><string name="Name">Guide</string><ProtectedString name="Source"><![CDATA[-- Old Pete's first-day guide on screen: the current goal at the top, a golden
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000021"><Properties><string name="Name">Guide</string><ProtectedString name="Source"><![CDATA[-- Old Pete's first-day guide on screen: the current goal at the top, a golden
 -- line from you to where you need to go, and Pete talking above his head.
 
 local Players = game:GetService("Players")
@@ -4415,7 +4656,7 @@ function Guide.Init(screenGui)
 end
 
 return Guide
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000020"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Always-on screen info: coins, bag, the weekly event, and the menu buttons.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000022"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Always-on screen info: coins, bag, the weekly event, and the menu buttons.
 
 local UserInputService = game:GetService("UserInputService")
 
@@ -4562,7 +4803,51 @@ function Hud.Init(screenGui)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000021"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[-- Small messages that pop up on the right side of the screen.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000023"><Properties><string name="Name">MenuLock</string><ProtectedString name="Source"><![CDATA[-- While any menu window is open the player can't walk, jump or use
+-- shopkeeper prompts. Fishing ignores clicks too (see Fishing.luau).
+
+local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+
+local UI = require(script.Parent.UI)
+
+local MenuLock = {}
+
+local player = Players.LocalPlayer
+
+function MenuLock.Init()
+	local controls = nil
+	task.spawn(function()
+		local ok, result = pcall(function()
+			local module = player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule", 20)
+			return module and require(module):GetControls()
+		end)
+		if ok then
+			controls = result
+		end
+	end)
+
+	UI.WindowChanged:Connect(function()
+		local open = UI.IsWindowOpen()
+		ProximityPromptService.Enabled = not open
+		if controls then
+			if open then
+				controls:Disable()
+			else
+				controls:Enable()
+			end
+		end
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if open and humanoid then
+			humanoid:Move(Vector3.zero) -- stop on the spot
+			humanoid.Jump = false
+		end
+	end)
+end
+
+return MenuLock
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000024"><Properties><string name="Name">Notifications</string><ProtectedString name="Source"><![CDATA[-- Small messages that pop up on the right side of the screen.
 
 local TweenService = game:GetService("TweenService")
 
@@ -4635,7 +4920,7 @@ function Notifications.Show(text, kind)
 end
 
 return Notifications
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000022"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- The menus: Bag, Fish Market, Bait & Tackle, Bounties, Fish Book, Rods,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000025"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- The menus: Bag, Fish Market, Bait & Tackle, Bounties, Fish Book, Rods,
 -- Shop, Travel and Rebirth.
 
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -5217,7 +5502,7 @@ function Panels.Init(screenGui)
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000023"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[-- The player's latest save data, as sent by the server.
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000026"><Properties><string name="Name">State</string><ProtectedString name="Source"><![CDATA[-- The player's latest save data, as sent by the server.
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Remotes = require(Shared.Remotes)
@@ -5252,7 +5537,7 @@ function State.Action(actionName, argument)
 end
 
 return State
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000024"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- Helpers for building the on-screen menus in code, so nothing has to be
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000027"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- Helpers for building the on-screen menus in code, so nothing has to be
 -- drawn by hand in Studio. Colors and fonts live in UI.Theme.
 
 local UI = {}
@@ -5433,7 +5718,7 @@ function UI.window(screenGui, title, render)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000025"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- Things in the world that only this player sees: weather, opened zone gates,
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX00000028"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- Things in the world that only this player sees: weather, opened zone gates,
 -- the VIP door, and ambient life (fish jumping out of the water, seagulls).
 
 local Lighting = game:GetService("Lighting")
